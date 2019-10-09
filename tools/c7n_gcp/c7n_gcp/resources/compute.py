@@ -151,19 +151,20 @@ class DiskSnapshot(MethodAction):
     method_spec = {'op': 'createSnapshot'}
     path_param_re = re.compile(
         '.*?/projects/(.*?)/zones/(.*?)/disks/(.*)')
-    attr_filter = ('status', ('RUNNING','READY'))
+    attr_filter = ('status', ('RUNNING', 'READY'))
 
     def get_resource_params(self, m, r):
         project, zone, resourceId = self.path_param_re.match(r['selfLink']).groups()
         return {
             'project': project,
             'zone': zone,
-            'disk': resourceId, 
+            'disk': resourceId,
             'body': {
                 'name': resourceId,
                 'labels': r['labels'],
             }
         }
+
 
 @Disk.action_registry.register('delete')
 class DiskDelete(MethodAction):
@@ -172,14 +173,14 @@ class DiskDelete(MethodAction):
     method_spec = {'op': 'delete'}
     path_param_re = re.compile(
         '.*?/projects/(.*?)/zones/(.*?)/disks/(.*)')
-    attr_filter = ('status', ('RUNNING','READY'))
+    attr_filter = ('status', ('RUNNING', 'READY'))
 
     def get_resource_params(self, m, r):
         project, zone, resourceId = self.path_param_re.match(r['selfLink']).groups()
         return {
             'project': project,
             'zone': zone,
-            'disk': resourceId, 
+            'disk': resourceId,
         }
 
 
