@@ -161,7 +161,7 @@ class DiskSnapshot(MethodAction):
             'disk': resourceId,
             'body': {
                 'name': resourceId,
-                'labels': r['labels'],
+                'labels': r.get('labels', {}),
             }
         }
 

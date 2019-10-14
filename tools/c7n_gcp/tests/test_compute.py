@@ -108,13 +108,37 @@ class InstanceTest(BaseTest):
 class DiskTest(BaseTest):
 
     def test_disk_query(self):
-        factory = self.replay_flight_data('disk-query')
+        factory = self.replay_flight_data('disk-query', project_id='custodian-1291')
         p = self.load_policy(
             {'name': 'all-disks',
              'resource': 'gcp.disk'},
             session_factory=factory)
         resources = p.run()
         self.assertEqual(len(resources), 6)
+
+    def test_disk_snapshot(self):
+        factory = self.replay_flight_data('disk-snapshot', project_id='custodian-1291')
+        p = self.load_policy(
+            {'name': 'all-images',
+             'resource': 'gcp.disk',
+             'filters': [
+                 {'name': 'c7n-jenkins'}],
+             'actions': ['snapshot']},
+            session_factory=factory)
+        resources = p.run()
+        self.assertEqual(len(resources), 1)
+
+    def test_disk_delete(self):
+        factory = self.replay_flight_data('disk-delete', project_id='custodian-1291')
+        p = self.load_policy(
+            {'name': 'all-images',
+             'resource': 'gcp.disk',
+             'filters': [
+                 {'name': 'c7n-jenkins'}],
+             'actions': ['delete']},
+            session_factory=factory)
+        resources = p.run()
+        self.assertEqual(len(resources), 1)
 
 
 class SnapshotTest(BaseTest):
