@@ -129,17 +129,28 @@ class DiskTest(BaseTest):
         self.assertEqual(len(resources), 1)
 
     def test_disk_delete(self):
-        factory = self.replay_flight_data('disk-delete', project_id='custodian-1291')
-        p = self.load_policy(
+        project_id = 'custodian-1291'
+        resource_name = 'c7n-jenkins'
+        factory = self.replay_flight_data('disk-delete', project_id=project_id)
+        policy = self.load_policy(
             {'name': 'all-images',
              'resource': 'gcp.disk',
              'filters': [
-                 {'name': 'c7n-jenkins'}],
+                 {'name': resource_name}],
              'actions': ['delete']},
             session_factory=factory)
-        resources = p.run()
-        self.assertEqual(len(resources), 1)
+        resources = policy.run()
+        self.assertEqual(resources[0]['name'], resource_name)
 
+        client = policy.resource_manager.get_client()
+        zone = resources[0]['zone'].rsplit('/', 1)[-1]
+        result = client.execute_query(
+            'list', {'project': project_id,
+                     'filter': 'name = instance-1',
+                     'zone': zone})
+
+        print(result)
+        self.assertEqual(len(result['items']["zones/{}".format(zone)]['disks']), 0)
 
 class SnapshotTest(BaseTest):
 
