@@ -149,8 +149,8 @@ class DiskTest(BaseTest):
                      'filter': 'name = instance-1',
                      'zone': zone})
 
-        print(result)
         self.assertEqual(len(result['items']["zones/{}".format(zone)]['disks']), 0)
+
 
 class SnapshotTest(BaseTest):
 
