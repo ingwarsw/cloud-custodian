@@ -52,11 +52,11 @@ class LoadBalancingAddressTest(BaseTest):
         project_id = 'cloud-custodian'
         factory = self.replay_flight_data('lb-addresses-delete',
                                           project_id=project_id)
-        policy = self.load_policy({
-                'name': 'delete-address',
-                'resource': 'gcp.loadbalancer-address',
-                'actions': ['delete']
-            }, session_factory=factory)
+        policy = self.load_policy(
+            {'name': 'delete-address',
+             'resource': 'gcp.loadbalancer-address',
+             'actions': ['delete']
+             }, session_factory=factory)
 
         resources = policy.run()
         self.assertEqual(resources[0]['name'], 'new322')
