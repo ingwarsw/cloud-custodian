@@ -42,6 +42,7 @@ class LoadBalancingAddress(QueryResourceManager):
 class LoadBalancingAddressDelete(MethodAction):
     schema = type_schema('delete')
     method_spec = {'op': 'delete'}
+    attr_filter = ('status', ('RESERVED',))
 
     def get_resource_params(self, model, resource):
         project = local_session(self.manager.source.query.session_factory).get_default_project()
