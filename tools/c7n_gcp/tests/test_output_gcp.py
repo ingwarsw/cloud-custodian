@@ -12,9 +12,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from datetime import datetime, timedelta
-import time
-
 from c7n.config import Bag
 from c7n.output import metrics_outputs
 from c7n_gcp.output import StackDriverMetrics
@@ -38,7 +35,7 @@ class MetricsOutputTest(BaseTest):
         metrics = StackDriverMetrics(ctx, conf)
         metrics.put_metric('ResourceCount', 43, 'Count', Scope='Policy')
         metrics.flush()
-    
+
     def test_metrics_output_set_write_project_id(self):
         project_id = 'cloud-custodian-sub'
         write_project_id = 'cloud-custodian'
