@@ -34,37 +34,18 @@ class MetricsOutputTest(BaseTest):
         factory = self.replay_flight_data('output-metrics', project_id=project_id)
         ctx = Bag(session_factory=factory,
                   policy=Bag(name='custodian-works', resource_type='gcp.function'))
-        metrics = StackDriverMetrics(ctx)
+        conf = Bag()
+        metrics = StackDriverMetrics(ctx, conf)
         metrics.put_metric('ResourceCount', 43, 'Count', Scope='Policy')
-
-        if self.recording:
-            time.sleep(42)
-
-        session = factory()
-        client = session.client('monitoring', 'v3', 'projects.timeSeries')
-        results = client.execute_command(
-            'list', {
-                'name': 'projects/{}'.format(project_id),
-                'filter': 'metric.type="custom.googleapis.com/custodian/policy/resourcecount"',
-                'pageSize': 3,
-                'interval_startTime': (
-                    datetime.utcnow() - timedelta(minutes=5)).isoformat('T') + 'Z',
-                'interval_endTime': datetime.utcnow().isoformat('T') + 'Z'
-            })
-        self.assertEqual(
-            results['timeSeries'],
-            [{u'metric': {
-                u'labels': {
-                    u'policy': u'custodian-works',
-                    u'project_id': u'cloud-custodian'},
-                u'type': u'custom.googleapis.com/custodian/policy/resourcecount'},
-              u'metricKind': u'GAUGE',
-              u'points': [{
-                  u'interval': {
-                      u'endTime': u'2018-08-12T22:30:53.524505Z',
-                      u'startTime': u'2018-08-12T22:30:53.524505Z'},
-                  u'value': {u'int64Value': u'43'}}],
-              u'resource': {
-                  u'labels': {u'project_id': u'cloud-custodian'},
-                  u'type': u'global'},
-              u'valueType': u'INT64'}])
+        metrics.flush()
+    
+    def test_metrics_output_set_write_project_id(self):
+        project_id = 'cloud-custodian-sub'
+        write_project_id = 'cloud-custodian'
+        factory = self.replay_flight_data('output-metrics', project_id=project_id)
+        ctx = Bag(session_factory=factory,
+                  policy=Bag(name='custodian-works', resource_type='gcp.function'))
+        conf = Bag(project_id=write_project_id)
+        metrics = StackDriverMetrics(ctx, conf)
+        metrics.put_metric('ResourceCount', 43, 'Count', Scope='Policy')
+        metrics.flush()
