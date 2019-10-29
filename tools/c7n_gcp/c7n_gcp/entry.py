@@ -14,8 +14,6 @@
 
 import logging
 
-import c7n_gcp.policy
-
 # This is an alphabetically sorted import list
 import c7n_gcp.actions
 import c7n_gcp.filters
