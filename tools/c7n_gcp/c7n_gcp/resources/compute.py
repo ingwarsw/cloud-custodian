@@ -37,10 +37,10 @@ class Instance(QueryResourceManager):
 
         @staticmethod
         def get(client, resource_info):
-            return client.execute_command('get', Instance.resource_type.get_self_params(resource_info))
+            return client.execute_command('get', Instance.resource_type.get_self_params(resource_info, 'get'))
 
         @staticmethod
-        def get_self_params(resource):
+        def get_self_params(resource, operation=None):
             path_param_re = re.compile('.*?/projects/(.*?)/zones/(.*?)/instances/(.*)')
             project, zone, instance = path_param_re.match(
                 resource['selfLink']).groups()
@@ -129,14 +129,17 @@ class Disk(QueryResourceManager):
 
         @staticmethod
         def get(client, resource_info):
-            return client.execute_command('get', Disk.resource_type.get_self_params(resource_info))
+            return client.execute_command('get', Disk.resource_type.get_self_params(resource_info, 'get'))
 
         @staticmethod
-        def get_self_params(resource):
+        def get_self_params(resource, operation=None):
+            resource_param = 'disk'
+            if operation == 'setLabels':
+                resource_param = 'resource'
             path_param_re = re.compile('.*?/projects/(.*?)/zones/(.*?)/disks/(.*)')
             project, zone, disk = path_param_re.match(
                 resource['selfLink']).groups()
-            return {'project': project, 'zone': zone, 'disk': disk}
+            return {'project': project, 'zone': zone, resource_param: disk}
 
 
 register_labeling(Disk.action_registry)
@@ -150,7 +153,7 @@ class DiskSnapshot(MethodAction):
     attr_filter = ('status', ('RUNNING', 'READY'))
 
     def get_resource_params(self, model, resource):
-        return model.get_self_params(resource).update({
+        return model.get_self_params(resource, self.method_spec['op']).update({
             'body': {
                 'name': resource.get('name'),
                 'labels': resource.get('labels', {}),

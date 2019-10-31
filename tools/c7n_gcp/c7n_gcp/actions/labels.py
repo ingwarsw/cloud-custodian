@@ -42,17 +42,17 @@ class BaseLabelAction(MethodAction):
         return result
 
     def get_resource_params(self, model, resource):
-        params = model.get_self_params(resource)
+        params = model.get_self_params(resource, self.method_spec['op'])
         current_labels = self._get_current_labels(resource)
         new_labels = self.get_labels_to_add(resource)
         remove_labels = self.get_labels_to_delete(resource)
         all_labels = self._merge_labels(current_labels, new_labels, remove_labels)
-        body = {'body': {
+
+        params['body'] = {
             'labels': all_labels,
             'labelFingerprint': resource['labelFingerprint']
-        }}
+        }
 
-        params.update(body)
         return params
 
     def _get_current_labels(self, resource):

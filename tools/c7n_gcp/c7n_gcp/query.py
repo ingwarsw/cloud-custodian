@@ -280,7 +280,7 @@ class TypeInfo(object):
     get_requires_event = False
 
     @staticmethod
-    def get_self_params(resource):
+    def get_self_params(resource, operation=None):
         return None
 
 

@@ -77,7 +77,10 @@ class MethodAction(Action):
         result_key = self.method_spec.get('result_key')
         annotation_key = self.method_spec.get('annotation_key')
         for resource in resources:
-            params = self.get_resource_params(model, resource)
+            params = self.get_resource_params(model, resource) or model.get_self_params(resource, op_name)
+            if not params:
+                raise RuntimeError("Params for action %s needs to be set either " +
+                                   "via get_resource_params or get_self_params" % self.__name__)
             result = self.invoke_api(client, op_name, params)
             if result_key and annotation_key:
                 resource[annotation_key] = result.get(result_key)
@@ -91,10 +94,7 @@ class MethodAction(Action):
             raise
 
     def get_resource_params(self, model, resource):
-        default = model.get_self_params(resource)
-        if default:
-            return default
-        raise NotImplementedError("subclass responsibility")
+        return None
 
     def get_client(self, session, model):
         return session.client(
