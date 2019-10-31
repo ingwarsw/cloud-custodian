@@ -40,6 +40,7 @@ from c7n.provider import clouds
 from c7n.resources import load_resources
 from c7n.resolver import ValuesFrom
 from c7n.filters.core import ValueFilter, EventFilter, AgeFilter, OPERATORS, VALUE_TYPES
+from c7n.structure import StructureParser # noqa
 
 
 def validate(data, schema=None):
@@ -113,7 +114,7 @@ def specific_error(error):
     if r is not None:
         found = None
         for idx, v in enumerate(error.validator_value):
-            if v['$ref'].rsplit('/', 2)[1].endswith(r):
+            if '$ref' in v and v['$ref'].rsplit('/', 2)[1].endswith(r):
                 found = idx
                 break
         if found is not None:

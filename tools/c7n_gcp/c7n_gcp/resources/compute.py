@@ -54,14 +54,14 @@ register_labeling(Instance.action_registry)
 class InstanceOffHour(OffHour):
 
     def get_tag_value(self, instance):
-        return instance.get('labels', {}).get(self.tag_key)
+        return instance.get('labels', {}).get(self.tag_key, False)
 
 
 @Instance.filter_registry.register('onhour')
 class InstanceOnHour(OnHour):
 
     def get_tag_value(self, instance):
-        return instance.get('labels', {}).get(self.tag_key)
+        return instance.get('labels', {}).get(self.tag_key, False)
 
 
 @Instance.action_registry.register('start')
