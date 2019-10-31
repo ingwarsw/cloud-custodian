@@ -55,9 +55,6 @@ class BaseLabelAction(MethodAction):
         params.update(body)
         return params
 
-    def _get_body(self, resource):
-        pass
-
     def _get_current_labels(self, resource):
         return resource.get('labels', {})
 

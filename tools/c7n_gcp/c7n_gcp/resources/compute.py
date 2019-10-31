@@ -129,10 +129,17 @@ class Disk(QueryResourceManager):
 
         @staticmethod
         def get(client, resource_info):
-            return client.execute_command(
-                'get', {'project': resource_info['project_id'],
-                        'zone': resource_info['zone'],
-                        'resourceId': resource_info['disk_id']})
+            return client.execute_command('get', Disk.resource_type.get_self_params(resource_info))
+
+        @staticmethod
+        def get_self_params(resource):
+            path_param_re = re.compile('.*?/projects/(.*?)/zones/(.*?)/disks/(.*)')
+            project, zone, disk = path_param_re.match(
+                resource['selfLink']).groups()
+            return {'project': project, 'zone': zone, 'disk': disk}
+
+
+register_labeling(Disk.action_registry)
 
 
 @Disk.action_registry.register('snapshot')
@@ -140,21 +147,15 @@ class DiskSnapshot(MethodAction):
 
     schema = type_schema('snapshot')
     method_spec = {'op': 'createSnapshot'}
-    path_param_re = re.compile(
-        '.*?/projects/(.*?)/zones/(.*?)/disks/(.*)')
     attr_filter = ('status', ('RUNNING', 'READY'))
 
-    def get_resource_params(self, m, r):
-        project, zone, resourceId = self.path_param_re.match(r['selfLink']).groups()
-        return {
-            'project': project,
-            'zone': zone,
-            'disk': resourceId,
+    def get_resource_params(self, model, resource):
+        return model.get_self_params(resource).update({
             'body': {
-                'name': resourceId,
-                'labels': r.get('labels', {}),
+                'name': resource.get('name'),
+                'labels': resource.get('labels', {}),
             }
-        }
+        })
 
 
 @Disk.action_registry.register('delete')
@@ -162,17 +163,7 @@ class DiskDelete(MethodAction):
 
     schema = type_schema('delete')
     method_spec = {'op': 'delete'}
-    path_param_re = re.compile(
-        '.*?/projects/(.*?)/zones/(.*?)/disks/(.*)')
     attr_filter = ('status', ('RUNNING', 'READY'))
-
-    def get_resource_params(self, m, r):
-        project, zone, resourceId = self.path_param_re.match(r['selfLink']).groups()
-        return {
-            'project': project,
-            'zone': zone,
-            'disk': resourceId,
-        }
 
 
 @resources.register('snapshot')
