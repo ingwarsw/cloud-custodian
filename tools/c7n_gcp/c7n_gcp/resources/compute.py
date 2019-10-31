@@ -17,14 +17,15 @@ import re
 from c7n.utils import type_schema
 
 from c7n_gcp.actions import MethodAction
+from c7n_gcp.actions.labels import register_labeling
 from c7n_gcp.provider import resources
 from c7n_gcp.query import QueryResourceManager, TypeInfo
 
 from c7n.filters.offhours import OffHour, OnHour
 
-
 @resources.register('instance')
 class Instance(QueryResourceManager):
+
 
     class resource_type(TypeInfo):
         service = 'compute'
@@ -36,13 +37,17 @@ class Instance(QueryResourceManager):
 
         @staticmethod
         def get(client, resource_info):
-            # The api docs for compute instance get are wrong,
-            # they spell instance as resourceId
-            return client.execute_command(
-                'get', {'project': resource_info['project_id'],
-                        'zone': resource_info['zone'],
-                        'instance': resource_info[
-                            'resourceName'].rsplit('/', 1)[-1]})
+            return client.execute_command('get', Instance.resource_type.get_self_params(resource_info))
+
+        @staticmethod
+        def get_self_params(resource):
+            path_param_re = re.compile('.*?/projects/(.*?)/zones/(.*?)/instances/(.*)')
+            project, zone, instance = path_param_re.match(
+                resource['selfLink']).groups()
+            return {'project': project, 'zone': zone, 'instance': instance}
+
+
+register_labeling(Instance.action_registry)
 
 
 @Instance.filter_registry.register('offhour')
@@ -59,41 +64,27 @@ class InstanceOnHour(OnHour):
         return instance.get('labels', {}).get(self.tag_key)
 
 
-class InstanceAction(MethodAction):
-
-    def get_resource_params(self, model, resource):
-        project, zone, instance = self.path_param_re.match(
-            resource['selfLink']).groups()
-        return {'project': project, 'zone': zone, 'instance': instance}
-
-
 @Instance.action_registry.register('start')
-class Start(InstanceAction):
+class Start(MethodAction):
 
     schema = type_schema('start')
     method_spec = {'op': 'start'}
-    path_param_re = re.compile(
-        '.*?/projects/(.*?)/zones/(.*?)/instances/(.*)')
     attr_filter = ('status', ('TERMINATED',))
 
 
 @Instance.action_registry.register('stop')
-class Stop(InstanceAction):
+class Stop(MethodAction):
 
     schema = type_schema('stop')
     method_spec = {'op': 'stop'}
-    path_param_re = re.compile(
-        '.*?/projects/(.*?)/zones/(.*?)/instances/(.*)')
     attr_filter = ('status', ('RUNNING',))
 
 
 @Instance.action_registry.register('delete')
-class Delete(InstanceAction):
+class Delete(MethodAction):
 
     schema = type_schema('delete')
     method_spec = {'op': 'delete'}
-    path_param_re = re.compile(
-        '.*?/projects/(.*?)/zones/(.*?)/instances/(.*)')
 
 
 @resources.register('image')
