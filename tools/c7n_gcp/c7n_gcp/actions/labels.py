@@ -1,4 +1,4 @@
-# Copyright 2019 Microsoft Corporation
+# Copyright 2019 Karol Lassak
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -42,7 +42,7 @@ class BaseLabelAction(MethodAction):
         return result
 
     def get_resource_params(self, model, resource):
-        params = model.get_self_params(resource, self.method_spec['op'])
+        params = model.get_label_params(resource)
         current_labels = self._get_current_labels(resource)
         new_labels = self.get_labels_to_add(resource)
         remove_labels = self.get_labels_to_delete(resource)

@@ -23,9 +23,9 @@ from c7n_gcp.query import QueryResourceManager, TypeInfo
 
 from c7n.filters.offhours import OffHour, OnHour
 
+
 @resources.register('instance')
 class Instance(QueryResourceManager):
-
 
     class resource_type(TypeInfo):
         service = 'compute'
@@ -37,10 +37,16 @@ class Instance(QueryResourceManager):
 
         @staticmethod
         def get(client, resource_info):
-            return client.execute_command('get', Instance.resource_type.get_self_params(resource_info, 'get'))
+            # The api docs for compute instance get are wrong,
+            # they spell instance as resourceId
+            return client.execute_command(
+                'get', {'project': resource_info['project_id'],
+                        'zone': resource_info['zone'],
+                        'instance': resource_info[
+                            'resourceName'].rsplit('/', 1)[-1]})
 
         @staticmethod
-        def get_self_params(resource, operation=None):
+        def get_label_params(resource):
             path_param_re = re.compile('.*?/projects/(.*?)/zones/(.*?)/instances/(.*)')
             project, zone, instance = path_param_re.match(
                 resource['selfLink']).groups()
@@ -64,8 +70,16 @@ class InstanceOnHour(OnHour):
         return instance.get('labels', {}).get(self.tag_key, False)
 
 
+class InstanceAction(MethodAction):
+
+    def get_resource_params(self, model, resource):
+        path_param_re = re.compile('.*?/projects/(.*?)/zones/(.*?)/instances/(.*)')
+        project, zone, instance = path_param_re.match(resource['selfLink']).groups()
+        return {'project': project, 'zone': zone, 'instance': instance}
+
+
 @Instance.action_registry.register('start')
-class Start(MethodAction):
+class Start(InstanceAction):
 
     schema = type_schema('start')
     method_spec = {'op': 'start'}
@@ -73,7 +87,7 @@ class Start(MethodAction):
 
 
 @Instance.action_registry.register('stop')
-class Stop(MethodAction):
+class Stop(InstanceAction):
 
     schema = type_schema('stop')
     method_spec = {'op': 'stop'}
@@ -81,7 +95,7 @@ class Stop(MethodAction):
 
 
 @Instance.action_registry.register('delete')
-class Delete(MethodAction):
+class Delete(InstanceAction):
 
     schema = type_schema('delete')
     method_spec = {'op': 'delete'}
@@ -129,13 +143,16 @@ class Disk(QueryResourceManager):
 
         @staticmethod
         def get(client, resource_info):
-            return client.execute_command('get', Disk.resource_type.get_self_params(resource_info, 'get'))
+            return client.execute_command(
+                'get', {'project': resource_info['project_id'],
+                        'zone': resource_info['zone'],
+                        'resourceId': resource_info['disk_id']})
 
         @staticmethod
-        def get_self_params(resource, operation=None):
-            resource_param = 'disk'
-            if operation == 'setLabels':
-                resource_param = 'resource'
+        def get_label_params(resource, self_link=False):
+            resource_param = 'resource'
+            if self_link:
+                resource_param = 'disk'
             path_param_re = re.compile('.*?/projects/(.*?)/zones/(.*?)/disks/(.*)')
             project, zone, disk = path_param_re.match(
                 resource['selfLink']).groups()
@@ -150,15 +167,21 @@ class DiskSnapshot(MethodAction):
 
     schema = type_schema('snapshot')
     method_spec = {'op': 'createSnapshot'}
+    path_param_re = re.compile(
+        '.*?/projects/(.*?)/zones/(.*?)/disks/(.*)')
     attr_filter = ('status', ('RUNNING', 'READY'))
 
-    def get_resource_params(self, model, resource):
-        return model.get_self_params(resource, self.method_spec['op']).update({
+    def get_resource_params(self, m, r):
+        project, zone, resourceId = self.path_param_re.match(r['selfLink']).groups()
+        return {
+            'project': project,
+            'zone': zone,
+            'disk': resourceId,
             'body': {
-                'name': resource.get('name'),
-                'labels': resource.get('labels', {}),
+                'name': resourceId,
+                'labels': r.get('labels', {}),
             }
-        })
+        }
 
 
 @Disk.action_registry.register('delete')
@@ -166,7 +189,17 @@ class DiskDelete(MethodAction):
 
     schema = type_schema('delete')
     method_spec = {'op': 'delete'}
+    path_param_re = re.compile(
+        '.*?/projects/(.*?)/zones/(.*?)/disks/(.*)')
     attr_filter = ('status', ('RUNNING', 'READY'))
+
+    def get_resource_params(self, m, r):
+        project, zone, resourceId = self.path_param_re.match(r['selfLink']).groups()
+        return {
+            'project': project,
+            'zone': zone,
+            'disk': resourceId,
+        }
 
 
 @resources.register('snapshot')
