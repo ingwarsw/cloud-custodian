@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from c7n.utils import local_session, type_schema
+from c7n.utils import type_schema
 from c7n_gcp.actions import MethodAction
 from c7n.filters import FilterValidationError
 from c7n_azure.lookup import Lookup
