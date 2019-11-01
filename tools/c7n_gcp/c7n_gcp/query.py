@@ -279,10 +279,6 @@ class TypeInfo(object):
     # for get methods that require the full event payload
     get_requires_event = False
 
-    @staticmethod
-    def get_self_params(resource, operation=None):
-        return None
-
 
 class ChildTypeInfo(TypeInfo):
 
