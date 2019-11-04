@@ -279,6 +279,8 @@ class TypeInfo(object):
     # for get methods that require the full event payload
     get_requires_event = False
 
+    labels = False
+
 
 class ChildTypeInfo(TypeInfo):
 

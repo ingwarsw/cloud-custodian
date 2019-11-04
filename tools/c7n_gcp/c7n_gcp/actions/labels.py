@@ -16,16 +16,13 @@ from datetime import datetime, timedelta
 from dateutil import tz as tzutil
 
 from c7n.utils import type_schema
-from c7n_gcp.actions import MethodAction
-from c7n.filters import FilterValidationError
-from c7n_azure.lookup import Lookup
+from c7n.filters import Filter, FilterValidationError
 from c7n.filters.offhours import Time
+from c7n_gcp.actions import MethodAction
+from c7n_gcp.filters.labels import LabelActionFilter
+from c7n_azure.lookup import Lookup
 
-
-def register_labeling(action_registry):
-    action_registry.register('label', Label)
-    action_registry.register('unlabel', RemoveLabel)
-    action_registry.register('mark-for-op', LabelDelayedAction)
+from c7n_gcp.provider import resources as gcp_resources
 
 
 class BaseLabelAction(MethodAction):
@@ -62,6 +59,19 @@ class BaseLabelAction(MethodAction):
 
     def _get_current_labels(self, resource):
         return resource.get('labels', {})
+
+    @staticmethod
+    def register_label_actions(registry, _):
+        for resource in registry.keys():
+            klass = registry.get(resource)
+
+            if klass.resource_type.labels:
+                print("Adding labels commands to {}", klass)
+                klass.action_registry.register('label', Label)
+                klass.action_registry.register('unlabel', RemoveLabel)
+                klass.action_registry.register('mark-for-op', LabelDelayedAction)
+
+                klass.filter_registry.register('marked-for-op', LabelActionFilter)
 
 
 class Label(BaseLabelAction):
@@ -218,11 +228,14 @@ class LabelDelayedAction(BaseLabelAction):
             days = 4
         action_date = (n + timedelta(days=days, hours=hours))
         if hours > 0:
-            action_date_string = action_date.strftime('%Y_%m_%d_%H%M_%Z')
+            action_date_string = action_date.strftime('%Y_%m_%d__%H_%M')
         else:
-            action_date_string = action_date.strftime('%Y_%m_%d')
+            action_date_string = action_date.strftime('%Y_%m_%d__0_0')
 
         return action_date_string
 
     def get_labels_to_add(self, resource):
         return {self.label: self.msg}
+
+gcp_resources.subscribe(
+    gcp_resources.EVENT_FINAL, BaseLabelAction.register_label_actions)

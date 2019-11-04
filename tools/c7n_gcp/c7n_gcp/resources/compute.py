@@ -17,7 +17,6 @@ import re
 from c7n.utils import type_schema
 
 from c7n_gcp.actions import MethodAction
-from c7n_gcp.actions.labels import register_labeling
 from c7n_gcp.provider import resources
 from c7n_gcp.query import QueryResourceManager, TypeInfo
 
@@ -34,6 +33,7 @@ class Instance(QueryResourceManager):
         enum_spec = ('aggregatedList', 'items.*.instances[]', None)
         scope = 'project'
         id = 'name'
+        labels = True
 
         @staticmethod
         def get(client, resource_info):
@@ -52,8 +52,6 @@ class Instance(QueryResourceManager):
                 resource['selfLink']).groups()
             return {'project': project, 'zone': zone, 'instance': instance}
 
-
-register_labeling(Instance.action_registry)
 
 
 @Instance.filter_registry.register('offhour')
@@ -140,6 +138,7 @@ class Disk(QueryResourceManager):
         scope = 'zone'
         enum_spec = ('aggregatedList', 'items.*.disks[]', None)
         id = 'name'
+        labels = True
 
         @staticmethod
         def get(client, resource_info):
@@ -157,9 +156,6 @@ class Disk(QueryResourceManager):
             project, zone, disk = path_param_re.match(
                 resource['selfLink']).groups()
             return {'project': project, 'zone': zone, resource_param: disk}
-
-
-register_labeling(Disk.action_registry)
 
 
 @Disk.action_registry.register('snapshot')
