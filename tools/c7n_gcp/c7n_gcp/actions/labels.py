@@ -12,15 +12,20 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+from datetime import datetime, timedelta
+from dateutil import tz as tzutil
+
 from c7n.utils import type_schema
 from c7n_gcp.actions import MethodAction
 from c7n.filters import FilterValidationError
 from c7n_azure.lookup import Lookup
+from c7n.filters.offhours import Time
 
 
 def register_labeling(action_registry):
     action_registry.register('label', Label)
     action_registry.register('unlabel', RemoveLabel)
+    action_registry.register('mark-for-op', LabelDelayedAction)
 
 
 class BaseLabelAction(MethodAction):
@@ -133,3 +138,91 @@ class RemoveLabel(BaseLabelAction):
 
     def get_labels_to_delete(self, resource):
         return self.data.get('labels')
+
+
+DEFAULT_TAG = "custodian_status"
+
+
+class LabelDelayedAction(BaseLabelAction):
+    """Label resources for future action.
+
+    The optional 'tz' parameter can be used to adjust the clock to align
+    with a given timezone. The default value is 'utc'.
+
+    If neither 'days' nor 'hours' is specified, Cloud Custodian will default
+    to marking the resource for action 4 days in the future.
+
+    :example:
+
+    .. code-block :: yaml
+
+       policies:
+        - name: vm-mark-for-stop
+          resource: gcp.instance
+          filters:
+            - type: value
+              key: name
+              value: instance-to-stop-in-four-days
+          actions:
+            - type: mark-for-op
+              op: stop
+              days: 2
+    """
+
+    schema = type_schema(
+        'mark-for-op',
+        label={'type': 'string'},
+        msg={'type': 'string'},
+        days={'type': 'integer', 'minimum': 0, 'exclusiveMinimum': False},
+        hours={'type': 'integer', 'minimum': 0, 'exclusiveMinimum': False},
+        tz={'type': 'string'},
+        op={'type': 'string'})
+
+    default_template = 'resource_policy-{op}-{action_date}'
+
+    def __init__(self, data=None, manager=None, log_dir=None):
+        super(LabelDelayedAction, self).__init__(data, manager, log_dir)
+        self.tz = tzutil.gettz(
+            Time.TZ_ALIASES.get(self.data.get('tz', 'utc')))
+
+        msg_tmpl = self.data.get('msg', self.default_template)
+
+        op = self.data.get('op', 'stop')
+        days = self.data.get('days', 0)
+        hours = self.data.get('hours', 0)
+        action_date = self.generate_timestamp(days, hours)
+
+        self.label = self.data.get('label', DEFAULT_TAG)
+        self.msg = msg_tmpl.format(
+            op=op, action_date=action_date)
+
+    def validate(self):
+        op = self.data.get('op')
+        if self.manager and op not in self.manager.action_registry.keys():
+            raise FilterValidationError(
+                "mark-for-op specifies invalid op:%s in %s" % (
+                    op, self.manager.data))
+
+        self.tz = tzutil.gettz(
+            Time.TZ_ALIASES.get(self.data.get('tz', 'utc')))
+        if not self.tz:
+            raise FilterValidationError(
+                "Invalid timezone specified %s in %s" % (
+                    self.tz, self.manager.data))
+        return self
+
+    def generate_timestamp(self, days, hours):
+        n = datetime.now(tz=self.tz)
+        if days is None or hours is None:
+            # maintains default value of days being 4 if nothing is provided
+            days = 4
+        action_date = (n + timedelta(days=days, hours=hours))
+        if hours > 0:
+            action_date_string = action_date.strftime('%Y_%m_%d_%H%M_%Z')
+        else:
+            action_date_string = action_date.strftime('%Y_%m_%d')
+
+        return action_date_string
+
+    def get_labels_to_add(self, resource):
+        return {self.label: self.msg}
