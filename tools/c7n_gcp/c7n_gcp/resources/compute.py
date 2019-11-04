@@ -54,9 +54,8 @@ class Instance(QueryResourceManager):
                     'body': {
                         'labels': all_labels,
                         'labelFingerprint': resource['labelFingerprint']
-                        }
                     }
-
+                }
 
 
 @Instance.filter_registry.register('offhour')
@@ -161,8 +160,8 @@ class Disk(QueryResourceManager):
                     'body': {
                         'labels': all_labels,
                         'labelFingerprint': resource['labelFingerprint']
-                        }
                     }
+                }
 
 
 @Disk.action_registry.register('snapshot')

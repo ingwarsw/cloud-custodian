@@ -16,7 +16,7 @@ from datetime import datetime, timedelta
 from dateutil import tz as tzutil
 
 from c7n.utils import type_schema
-from c7n.filters import Filter, FilterValidationError
+from c7n.filters import FilterValidationError
 from c7n.filters.offhours import Time
 from c7n_gcp.actions import MethodAction
 from c7n_gcp.filters.labels import LabelActionFilter
@@ -231,6 +231,7 @@ class LabelDelayedAction(BaseLabelAction):
 
     def get_labels_to_add(self, resource):
         return {self.label: self.msg}
+
 
 gcp_resources.subscribe(
     gcp_resources.EVENT_FINAL, BaseLabelAction.register_label_actions)

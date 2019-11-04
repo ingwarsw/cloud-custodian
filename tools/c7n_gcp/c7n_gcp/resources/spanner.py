@@ -41,13 +41,12 @@ class SpannerInstance(QueryResourceManager):
         @staticmethod
         def get_label_params(resource, all_labels):
             return {'name': resource['name'],
-                    'body': {
-                          'instance': {
+                    'body': {'instance': {
                               'labels': all_labels
                             },
-                          'field_mask': ', '.join(['labels'])
-                        }
+                            'field_mask': ', '.join(['labels'])
                     }
+                }
 
 
 @SpannerInstance.action_registry.register('delete')

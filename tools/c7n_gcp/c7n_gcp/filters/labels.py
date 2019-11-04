@@ -103,7 +103,7 @@ class LabelActionFilter(Filter):
             return False
 
         try:
-            action_date = datetime.strptime(action_date_str, '%Y_%m_%d__%H_%M') 
+            action_date = datetime.strptime(action_date_str, '%Y_%m_%d__%H_%M')
         except Exception:
             self.log.error("could not parse label:%s value:%s on %s" % (
                 self.label, v, i['name']))
@@ -116,5 +116,4 @@ class LabelActionFilter(Filter):
         else:
             current_date = datetime.now()
 
-        return current_date >= (
-                action_date - timedelta(days=self.skew, hours=self.skew_hours))
+        return current_date >= (action_date - timedelta(days=self.skew, hours=self.skew_hours))
