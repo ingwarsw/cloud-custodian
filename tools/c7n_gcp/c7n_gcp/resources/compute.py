@@ -46,11 +46,16 @@ class Instance(QueryResourceManager):
                             'resourceName'].rsplit('/', 1)[-1]})
 
         @staticmethod
-        def get_label_params(resource):
+        def get_label_params(resource, all_labels):
             path_param_re = re.compile('.*?/projects/(.*?)/zones/(.*?)/instances/(.*)')
             project, zone, instance = path_param_re.match(
                 resource['selfLink']).groups()
-            return {'project': project, 'zone': zone, 'instance': instance}
+            return {'project': project, 'zone': zone, 'instance': instance,
+                    'body': {
+                        'labels': all_labels,
+                        'labelFingerprint': resource['labelFingerprint']
+                        }
+                    }
 
 
 
@@ -148,14 +153,16 @@ class Disk(QueryResourceManager):
                         'resourceId': resource_info['disk_id']})
 
         @staticmethod
-        def get_label_params(resource, self_link=False):
-            resource_param = 'resource'
-            if self_link:
-                resource_param = 'disk'
+        def get_label_params(resource, all_labels):
             path_param_re = re.compile('.*?/projects/(.*?)/zones/(.*?)/disks/(.*)')
-            project, zone, disk = path_param_re.match(
+            project, zone, instance = path_param_re.match(
                 resource['selfLink']).groups()
-            return {'project': project, 'zone': zone, resource_param: disk}
+            return {'project': project, 'zone': zone, 'resource': instance,
+                    'body': {
+                        'labels': all_labels,
+                        'labelFingerprint': resource['labelFingerprint']
+                        }
+                    }
 
 
 @Disk.action_registry.register('snapshot')

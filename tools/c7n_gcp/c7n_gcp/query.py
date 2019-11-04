@@ -280,6 +280,7 @@ class TypeInfo(object):
     get_requires_event = False
 
     labels = False
+    labels_op = 'setLabels'
 
 
 class ChildTypeInfo(TypeInfo):

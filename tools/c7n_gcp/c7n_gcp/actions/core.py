@@ -73,10 +73,10 @@ class MethodAction(Action):
             self.process_resource_set(client, model, resource_set)
 
     def process_resource_set(self, client, model, resources):
-        op_name = self.method_spec['op']
         result_key = self.method_spec.get('result_key')
         annotation_key = self.method_spec.get('annotation_key')
         for resource in resources:
+            op_name = self.get_operation_name(model, resource)
             params = self.get_resource_params(model, resource)
             result = self.invoke_api(client, op_name, params)
             if result_key and annotation_key:
@@ -89,6 +89,9 @@ class MethodAction(Action):
             if e.resp.status in self.ignore_error_codes:
                 return e
             raise
+
+    def get_operation_name(self, model, resource):
+        return self.method_spec['op']
 
     def get_resource_params(self, model, resource):
         raise NotImplementedError("subclass responsibility")

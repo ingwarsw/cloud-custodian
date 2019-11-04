@@ -26,8 +26,6 @@ from c7n_gcp.provider import resources as gcp_resources
 
 
 class BaseLabelAction(MethodAction):
-    schema = type_schema('setLabels')
-    method_spec = {'op': 'setLabels'}
 
     def get_labels_to_add(self, resource):
         return None
@@ -43,19 +41,16 @@ class BaseLabelAction(MethodAction):
             result = {k: v for k, v in current_labels.items() if k not in remove_labels}
         return result
 
+    def get_operation_name(self, model, resource):
+        return model.labels_op
+
     def get_resource_params(self, model, resource):
-        params = model.get_label_params(resource)
         current_labels = self._get_current_labels(resource)
         new_labels = self.get_labels_to_add(resource)
         remove_labels = self.get_labels_to_delete(resource)
         all_labels = self._merge_labels(current_labels, new_labels, remove_labels)
 
-        params['body'] = {
-            'labels': all_labels,
-            'labelFingerprint': resource['labelFingerprint']
-        }
-
-        return params
+        return model.get_label_params(resource, all_labels)
 
     def _get_current_labels(self, resource):
         return resource.get('labels', {})
