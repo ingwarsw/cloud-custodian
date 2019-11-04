@@ -18,9 +18,9 @@ from dateutil import tz as tzutil
 from c7n.utils import type_schema
 from c7n.filters import FilterValidationError
 from c7n.filters.offhours import Time
+from c7n.lookup import Lookup
 from c7n_gcp.actions import MethodAction
 from c7n_gcp.filters.labels import LabelActionFilter
-from c7n_azure.lookup import Lookup
 
 from c7n_gcp.provider import resources as gcp_resources
 
