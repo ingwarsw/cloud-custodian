@@ -99,4 +99,3 @@ class DeletePubSubSnapshot(MethodAction):
 
     def get_resource_params(self, m, r):
         return {'snapshot': r['name']}
-
