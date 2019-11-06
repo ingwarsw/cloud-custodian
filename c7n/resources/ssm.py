@@ -22,6 +22,7 @@ from c7n.exceptions import PolicyValidationError
 from c7n.filters import Filter
 from c7n.query import QueryResourceManager, TypeInfo
 from c7n.manager import resources
+from c7n.tags import universal_augment
 from c7n.utils import chunks, get_retry, local_session, type_schema, filter_empty
 from c7n.version import version
 
@@ -43,6 +44,8 @@ class SSMParameter(QueryResourceManager):
     retry = staticmethod(get_retry(('Throttled',)))
     permissions = ('ssm:GetParameters',
                    'ssm:DescribeParameters')
+
+    augment = universal_augment
 
 
 @resources.register('ssm-managed-instance')
@@ -543,7 +546,8 @@ class PostItem(Action):
             self.manager.type,
             self.manager.config.region,
             self.manager.config.account_id)).encode('utf8')
-        dedup = hashlib.md5(dedup).hexdigest()
+        # size restrictions on this value is 4-20, digest is 32
+        dedup = hashlib.md5(dedup).hexdigest()[:20]
 
         i = dict(
             Title=title,
