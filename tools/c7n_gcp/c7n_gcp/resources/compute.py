@@ -14,6 +14,8 @@
 
 import re
 
+from datetime import datetime
+
 from c7n.utils import type_schema
 
 from c7n_gcp.actions import MethodAction
@@ -147,7 +149,7 @@ class Disk(QueryResourceManager):
 @Disk.action_registry.register('snapshot')
 class DiskSnapshot(MethodAction):
 
-    schema = type_schema('snapshot')
+    schema = type_schema('snapshot', add_date={'type': 'boolean'})
     method_spec = {'op': 'createSnapshot'}
     path_param_re = re.compile(
         '.*?/projects/(.*?)/zones/(.*?)/disks/(.*)')
@@ -155,12 +157,18 @@ class DiskSnapshot(MethodAction):
 
     def get_resource_params(self, m, r):
         project, zone, resourceId = self.path_param_re.match(r['selfLink']).groups()
+        add_date = self.data.get('add_date', False)
+        name = resourceId
+        if add_date:
+            date = datetime.now().strftime('-%Y-%m-%d')
+            name = name[:50] + date
+
         return {
             'project': project,
             'zone': zone,
             'disk': resourceId,
             'body': {
-                'name': resourceId,
+                'name': name,
                 'labels': r.get('labels', {}),
             }
         }
