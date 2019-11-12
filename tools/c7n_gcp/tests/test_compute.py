@@ -135,7 +135,7 @@ class DiskTest(BaseTest):
              'resource': 'gcp.disk',
              'filters': [
                  {'name': 'c7n-jenkins'}],
-             'actions': [{'type': 'snapshot', 'add_date': 'true'}]},
+             'actions': [{'type': 'snapshot', 'add_date': True}]},
             session_factory=factory)
         resources = p.run()
         self.assertEqual(len(resources), 1)
