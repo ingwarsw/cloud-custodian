@@ -108,3 +108,27 @@ class LabelDelayedActionTest(BaseTest):
                 {'type': 'mark-for-op',
                  'op': 'no-such-op'}
             ]))
+
+
+class LabelActionFilterTest(BaseTest):
+
+    def test_schema_validate(self):
+        self.assertTrue(
+            self.load_policy(
+                get_policy(None, [
+                    {'type': 'marked-for-op',
+                     'op': 'stop'}
+                ])))
+
+        with self.assertRaises(FilterValidationError):
+            # Must specify op
+            self.load_policy(get_policy(None, [
+                {'type': 'marked-for-op'}
+            ]))
+
+        with self.assertRaises(FilterValidationError):
+            # Must specify right op
+            self.load_policy(get_policy(None, [
+                {'type': 'marked-for-op',
+                 'op': 'no-such-op'}
+            ]))

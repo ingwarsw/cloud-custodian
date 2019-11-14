@@ -104,6 +104,29 @@ class InstanceTest(BaseTest):
                      'zone': resources[0]['zone'].rsplit('/', 1)[-1]})
         self.assertEqual(result['items'][0]['status'], 'STOPPING')
 
+    def test_label_instance(self):
+        project_id = 'team-saasops'
+        factory = self.replay_flight_data('instance-label', project_id=project_id)
+        p = self.load_policy(
+            {'name': 'ilabel',
+             'resource': 'gcp.instance',
+             'filters': [{'name': 'test-ingwar'}],
+             'actions': [{
+                        'type': 'label',
+                        'label': 'test_label',
+                        'value': 'test_value'}]},
+            session_factory=factory)
+        resources = p.run()
+        self.assertEqual(len(resources), 1)
+        if self.recording:
+            time.sleep(1)
+        client = p.resource_manager.get_client()
+        result = client.execute_query(
+            'list', {'project': project_id,
+                     'filter': 'name = test-ingwar',
+                     'zone': resources[0]['zone'].rsplit('/', 1)[-1]})
+        self.assertEqual(result['items'][0]['labels']['test_label'], 'test_value')
+
 
 class DiskTest(BaseTest):
 
