@@ -61,7 +61,6 @@ class BaseLabelAction(MethodAction):
             klass = registry.get(resource)
 
             if klass.resource_type.labels:
-                print("Adding labels commands to {}", klass)
                 klass.action_registry.register('label', Label)
                 klass.action_registry.register('unlabel', RemoveLabel)
                 klass.action_registry.register('mark-for-op', LabelDelayedAction)
@@ -79,7 +78,7 @@ class Label(BaseLabelAction):
     .. code-block:: yaml
 
       policies:
-        - name: gcp-label-resourcegroups
+        - name: gcp-add-label
           resource: gcp.instance
           description: |
             Label all existing instances with a value such as environment
@@ -87,6 +86,28 @@ class Label(BaseLabelAction):
            - type: label
              label: environment
              value: test
+
+        - name: gcp-add-multiple-labels
+          resource: gcp.instance
+          description: |
+            Label all existing instances with multiple labels
+          actions:
+           - type: label
+             labels:
+                label_1: test_value_1
+                label_2: test_value_2
+
+        - name: gcp-add-label-from-resource-attr
+          resource: gcp.instance
+          description: |
+            Label all existing instances with label taken from resource attribute
+          actions:
+           - type: label
+             label: own_name
+             value:
+                type: resource
+                key: name
+                default-value: name_not_found
     """
 
     schema = type_schema(
