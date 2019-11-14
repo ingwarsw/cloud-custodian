@@ -111,10 +111,9 @@ class InstanceTest(BaseTest):
             {'name': 'ilabel',
              'resource': 'gcp.instance',
              'filters': [{'name': 'test-ingwar'}],
-             'actions': [{
-                        'type': 'label',
-                        'label': 'test_label',
-                        'value': 'test_value'}]},
+             'actions': [{'type': 'label',
+                          'label': 'test_label',
+                          'value': 'test_value'}]},
             session_factory=factory)
         resources = p.run()
         self.assertEqual(len(resources), 1)
