@@ -146,7 +146,8 @@ class InstanceTest(BaseTest):
             'list', {'project': project_id,
                      'filter': 'name = test-ingwar',
                      'zone': resources[0]['zone'].rsplit('/', 1)[-1]})
-        self.assertTrue(result['items'][0]['labels']['custodian_status'].startswith("resource_policy-start"))
+        self.assertTrue(result['items'][0]['labels']['custodian_status']
+                        .startswith("resource_policy-start"))
 
 
 class DiskTest(BaseTest):
