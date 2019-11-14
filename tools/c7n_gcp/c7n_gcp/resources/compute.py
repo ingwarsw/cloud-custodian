@@ -148,20 +148,43 @@ class Disk(QueryResourceManager):
 
 @Disk.action_registry.register('snapshot')
 class DiskSnapshot(MethodAction):
+    """
+    `Snapshots <https://cloud.google.com/compute/docs/reference/rest/v1/disks/createSnapshot>`_
+    disk.
 
-    schema = type_schema('snapshot', add_date={'type': 'boolean'})
+    The `name_format` specifies name of snapshot in python `format string <https://pyformat.info/>`
+
+    Inside format string there are defined variables:
+      - `now`: current time
+      - `disk`: whole disk resource
+
+    Default name format is `{disk.name}`
+
+    :Example:
+
+    .. code-block:: yaml
+
+        policies:
+          - name: gcp-disk-snapshot
+            resource: gcp.disk
+            filters:
+              - type: value
+                key: name
+                value: disk-7
+            actions:
+              - type: snapshot
+                name_format: "{disk[name]:.50}-{now:%Y-%m-%d}"
+    """
+    schema = type_schema('snapshot', name_format={'type': 'string'})
     method_spec = {'op': 'createSnapshot'}
     path_param_re = re.compile(
         '.*?/projects/(.*?)/zones/(.*?)/disks/(.*)')
     attr_filter = ('status', ('RUNNING', 'READY'))
 
-    def get_resource_params(self, m, r):
-        project, zone, resourceId = self.path_param_re.match(r['selfLink']).groups()
-        add_date = self.data.get('add_date', False)
-        name = resourceId
-        if add_date:
-            date = datetime.now().strftime('-%Y-%m-%d')
-            name = name[:50] + date
+    def get_resource_params(self, model, resource):
+        project, zone, resourceId = self.path_param_re.match(resource['selfLink']).groups()
+        name_format = self.data.get('name_format', '{disk[name]}')
+        name = name_format.format(disk=resource, now=datetime.now())
 
         return {
             'project': project,
@@ -169,7 +192,7 @@ class DiskSnapshot(MethodAction):
             'disk': resourceId,
             'body': {
                 'name': name,
-                'labels': r.get('labels', {}),
+                'labels': resource.get('labels', {}),
             }
         }
 
