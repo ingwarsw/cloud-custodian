@@ -31,7 +31,7 @@ extra_dependencies = ["azure-functions"] if sys.version_info[0] >= 3 else []
 
 setup(
     name="c7n_azure",
-    version='0.6.1',
+    version='0.6.2',
     description="Cloud Custodian - Azure Support",
     long_description=long_description,
     long_description_content_type='text/markdown',
@@ -66,13 +66,14 @@ setup(
                       "azure-mgmt-eventhub",
                       "azure-mgmt-hdinsight",
                       "azure-mgmt-iothub",
-                      "azure-mgmt-keyvault",
+                      "azure-mgmt-keyvault==1.1.0",
                       "azure-mgmt-managementgroups",
                       "azure-mgmt-network>=4.0.0",
                       "azure-mgmt-redis",
                       "azure-mgmt-resourcegraph",
-                      "azure-mgmt-resource==2.1.0",
+                      "azure-mgmt-resource~=4.0.0",
                       "azure-mgmt-rdbms",
+                      "azure-mgmt-search",
                       "azure-mgmt-sql",
                       "azure-mgmt-storage",
                       "azure-mgmt-subscription",
@@ -82,7 +83,7 @@ setup(
                       "azure-mgmt-logic",
                       "azure-cosmos",
                       "azure-graphrbac",
-                      "azure-keyvault",
+                      "azure-keyvault==1.1.0",
                       "azure-storage-blob~=2.1",
                       # azure-cosmosdb-table has incompatible dependency ~=1.1
                       # Remove this when fixed:
