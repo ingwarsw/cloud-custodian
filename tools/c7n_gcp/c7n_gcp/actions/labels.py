@@ -27,6 +27,8 @@ from c7n_gcp.provider import resources as gcp_resources
 
 class BaseLabelAction(MethodAction):
 
+    method_spec = {}
+
     def get_labels_to_add(self, resource):
         return None
 
@@ -34,7 +36,7 @@ class BaseLabelAction(MethodAction):
         return None
 
     def _merge_labels(self, current_labels, new_labels, remove_labels):
-        result = current_labels
+        result = dict(current_labels)
         if new_labels:
             result.update(new_labels)
         if remove_labels:

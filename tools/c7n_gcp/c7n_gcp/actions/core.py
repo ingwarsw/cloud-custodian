@@ -32,7 +32,7 @@ class MethodAction(Action):
     """
 
     # method we'll be invoking
-    method_spec = {}
+    method_spec = ()
 
     # batch size
     chunk_size = 20
