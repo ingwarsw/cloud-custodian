@@ -110,7 +110,7 @@ class StackdriverLogFilter(ValueFilter):
                     time_from=time_from,
                     filter_=filter_)
 
-            print("Filter: {}".format(filter_))
+            # print("Filter: {}".format(filter_))
             entries = client.list_entries(filter_=filter_)
 
             def map_entry(entry):
