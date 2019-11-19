@@ -20,7 +20,7 @@ from google.cloud.logging.entries import LogEntry
 
 
 from c7n.utils import chunks, local_session, type_schema
-from c7n.filters import Filter, FilterValidationError, ValueFilter
+from c7n.filters import FilterValidationError, ValueFilter
 
 from c7n_gcp.provider import resources as gcp_resources
 
@@ -43,7 +43,7 @@ class StackdriverLogFilter(ValueFilter):
     .. code-block:: yaml
 
         policies
-          - name: find-instances-stopped-more-tnan-week-ago
+          - name: find-instances-stopped-more-than-week-ago
             resource: gcp.instance
             filters:
               - type: value
@@ -51,14 +51,32 @@ class StackdriverLogFilter(ValueFilter):
                 value: TERMINATED
               - type: stackdriver-logs
                 filter_days: 7
-                filter: "resource.type=gce_instance AND resource.labels.instance_id={resource[id]} AND (jsonPayload.event_subtype:compute.instances.stop OR jsonPayload.event_subtype:compute.instances.guestTerminate OR protoPayload.request.@type:type.googleapis.com/compute.instances.stop)"
+                filter: |
+                    resource.type=gce_instance AND
+                    resource.labels.instance_id={resource[id]} AND
+                    (
+                        jsonPayload.event_subtype:compute.instances.stop OR
+                        jsonPayload.event_subtype:compute.instances.guestTerminate OR
+                        protoPayload.request.@type:type.googleapis.com/compute.instances.stop
+                    )
                 key: filtered_logs
                 value: empty
 
     """
 
-    schema = type_schema('stackdriver-logs', rinherit=ValueFilter.schema, filter={'type': 'string'})
+    schema = type_schema('stackdriver-logs',
+                         rinherit=ValueFilter.schema,
+                         required=['filter'],
+                         filter={'type': 'string'},
+                         filter_days={'type': 'number', 'minimum': 0})
     schema_alias = True
+
+    def validate(self):
+        if self.data.get('filter_days') < 0:
+            raise FilterValidationError("Filter '{}': invalid filter_days < 0".format(self.type))
+        if not self.data.get('filter'):
+            raise FilterValidationError("Filter '{}': filter field must exists".format(self.type))
+        super(StackdriverLogFilter, self).validate()
 
     def process(self, resources, event=None):
         futures = []
@@ -88,9 +106,11 @@ class StackdriverLogFilter(ValueFilter):
         for resource in resources:
             filter_ = self.data.get('filter').format(resource=resource)
             if time_from:
-                filter_ = "timestamp>={time_from:%Y-%m-%d} AND ({filter_})".format(time_from=time_from, filter_=filter_)
+                filter_ = "timestamp>={time_from:%Y-%m-%d} AND ({filter_})".format(
+                    time_from=time_from,
+                    filter_=filter_)
 
-            # print("Filter: {}".format(filter_))
+            print("Filter: {}".format(filter_))
             entries = client.list_entries(filter_=filter_)
 
             def map_entry(entry):
@@ -105,13 +125,9 @@ class StackdriverLogFilter(ValueFilter):
 
         return resources
 
-    @staticmethod
-    def register_filter_actions(registry, _):
-        for resource in registry.keys():
-            klass = registry.get(resource)
-            # print("Registering for class {}".format(klass))
-            klass.filter_registry.register('stackdriver-logs', StackdriverLogFilter)
+    @classmethod
+    def register_resources(klass, registry, resource_class):
+        resource_class.filter_registry.register('stackdriver-logs', klass)
 
 
-gcp_resources.subscribe(
-    gcp_resources.EVENT_FINAL, StackdriverLogFilter.register_filter_actions)
+gcp_resources.subscribe(gcp_resources.EVENT_REGISTER, StackdriverLogFilter.register_resources)
