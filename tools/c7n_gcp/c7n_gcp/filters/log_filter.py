@@ -12,12 +12,12 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from concurrent.futures import as_completed
 from datetime import datetime, timedelta
 
 from google.cloud.logging import Client as LogClient
 from google.cloud.logging.entries import LogEntry
-
+from google.api_core.exceptions import TooManyRequests
+from retrying import retry
 
 from c7n.utils import chunks, local_session, type_schema
 from c7n.filters import FilterValidationError, ValueFilter
@@ -79,55 +79,49 @@ class StackdriverLogFilter(ValueFilter):
         super(StackdriverLogFilter, self).validate()
 
     def process(self, resources, event=None):
-        futures = []
-        results = []
 
-        # Process each resource in a separate thread, returning all that pass filter
-        with self.executor_factory(max_workers=3) as worker:
-            for resource_set in chunks(resources, 20):
-                futures.append(worker.submit(self.process_resource_set, resource_set))
-
-            for feature in as_completed(futures):
-                if feature.exception():
-                    self.log.warning("Log filter error: %s" % feature.exception())
-                    continue
-                else:
-                    results.extend(feature.result())
-
-        return super(StackdriverLogFilter, self).process(results, event=None)
-
-    def process_resource_set(self, resources):
         project_id = local_session(self.manager.source.query.session_factory).get_default_project()
-        # print("Project {}".format(project_id))
         client = LogClient(project=project_id, _use_grpc=False)
 
         time_from = datetime.now() - timedelta(days=self.data.get('filter_days', 30))
 
+        results = []
         for resource in resources:
-            filter_ = self.data.get('filter').format(resource=resource)
-            if time_from:
-                filter_ = "timestamp>={time_from:%Y-%m-%d} AND ({filter_})".format(
+            results.extend([self.process_resource(resource, client, time_from)])
+
+        return super(StackdriverLogFilter, self).process(results, event=None)
+
+    def is_retryable_exception(e):
+        return isinstance(e, TooManyRequests)
+
+    @retry(retry_on_exception=is_retryable_exception,
+           wait_exponential_multiplier=1000,
+           wait_exponential_max=10000,
+           stop_max_attempt_number=10)
+    def process_resource(self, resource, client, time_from):
+        filter_ = self.data.get('filter').format(resource=resource)
+        filter_ = "timestamp>={time_from:%Y-%m-%d} AND ({filter_})".format(
                     time_from=time_from,
                     filter_=filter_)
 
-            # print("Filter: {}".format(filter_))
-            entries = client.list_entries(filter_=filter_)
+        # print("Filter: {}".format(filter_))
+        entries = client.list_entries(filter_=filter_)
 
-            def map_entry(entry):
-                json_entry = LogEntry.to_api_repr(entry)
-                json_entry["payload"] = entry.payload
-                return json_entry
+        def map_entry(entry):
+            json_entry = LogEntry.to_api_repr(entry)
+            json_entry["payload"] = entry.payload
+            return json_entry
 
-            entries = list(map(map_entry, entries))
+        entries = list(map(map_entry, entries))
 
-            # We are modifying resource to save logs in result
-            resource['filtered_logs'] = entries
+        # We are modifying resource to save logs in result
+        resource['filtered_logs'] = entries
 
-        return resources
+        return resource
 
     @classmethod
-    def register_resources(klass, registry, resource_class):
-        resource_class.filter_registry.register('stackdriver-logs', klass)
+    def register_resources(cls, registry, resource_class):
+        resource_class.filter_registry.register('stackdriver-logs', cls)
 
 
 gcp_resources.subscribe(gcp_resources.EVENT_REGISTER, StackdriverLogFilter.register_resources)
