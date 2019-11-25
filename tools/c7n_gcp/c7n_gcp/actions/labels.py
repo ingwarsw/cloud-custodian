@@ -57,18 +57,16 @@ class BaseLabelAction(MethodAction):
     def _get_current_labels(self, resource):
         return resource.get('labels', {})
 
-    @staticmethod
-    def register_label_actions(registry, _):
-        for resource in registry.keys():
-            klass = registry.get(resource)
+    @classmethod
+    def register_resources(cls, registry, resource_class):
+        if resource_class.resource_type.labels:
+            resource_class.action_registry.register('label', Label)
+            resource_class.action_registry.register('unlabel', RemoveLabel)
+            resource_class.action_registry.register('mark-for-op', LabelDelayedAction)
 
-            if klass.resource_type.labels:
-                klass.action_registry.register('label', Label)
-                klass.action_registry.register('unlabel', RemoveLabel)
-                klass.action_registry.register('mark-for-op', LabelDelayedAction)
+            resource_class.filter_registry.register('marked-for-op', LabelActionFilter)
 
-                klass.filter_registry.register('marked-for-op', LabelActionFilter)
-
+gcp_resources.subscribe(gcp_resources.EVENT_REGISTER, BaseLabelAction.register_resources)
 
 class Label(BaseLabelAction):
     """Adds labels to GCP resources
@@ -254,7 +252,3 @@ class LabelDelayedAction(BaseLabelAction):
 
     def get_labels_to_add(self, resource):
         return {self.label: self.msg}
-
-
-gcp_resources.subscribe(
-    gcp_resources.EVENT_FINAL, BaseLabelAction.register_label_actions)
