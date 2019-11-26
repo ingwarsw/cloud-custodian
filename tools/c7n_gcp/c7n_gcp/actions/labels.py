@@ -60,16 +60,17 @@ class BaseLabelAction(MethodAction):
     @classmethod
     def register_resources(cls, registry, resource_class):
         if resource_class.resource_type.labels:
-            resource_class.action_registry.register('label', Label)
-            resource_class.action_registry.register('unlabel', RemoveLabel)
+            resource_class.action_registry.register('set-labels', SetLabelsAction)
             resource_class.action_registry.register('mark-for-op', LabelDelayedAction)
 
             resource_class.filter_registry.register('marked-for-op', LabelActionFilter)
 
+
 gcp_resources.subscribe(gcp_resources.EVENT_REGISTER, BaseLabelAction.register_resources)
 
-class Label(BaseLabelAction):
-    """Adds labels to GCP resources
+
+class SetLabelsAction(BaseLabelAction):
+    """Set labels to GCP resources
 
     :example:
 
@@ -78,92 +79,52 @@ class Label(BaseLabelAction):
     .. code-block:: yaml
 
       policies:
-        - name: gcp-add-label
-          resource: gcp.instance
-          description: |
-            Label all existing instances with a value such as environment
-          actions:
-           - type: label
-             label: environment
-             value: test
-
         - name: gcp-add-multiple-labels
           resource: gcp.instance
           description: |
             Label all existing instances with multiple labels
           actions:
-           - type: label
+           - type: set-labels
              labels:
-                label_1: test_value_1
-                label_2: test_value_2
+               environment: test
+               env_type: customer
 
         - name: gcp-add-label-from-resource-attr
           resource: gcp.instance
           description: |
             Label all existing instances with label taken from resource attribute
           actions:
-           - type: label
-             label: own_name
-             value:
+           - type: set-labels
+             labels:
+               environment:
                 type: resource
                 key: name
                 default-value: name_not_found
+
+        - name: gcp-remove-label
+          resource: gcp.instance
+          description: |
+            Remove label from all instances
+          actions:
+           - type: set-labels
+             remove: [env]
+
     """
 
     schema = type_schema(
-        'label',
-        **{
-            'value': Lookup.lookup_type({'type': 'string'}),
-            'label': Lookup.lookup_type({'type': 'string'}),
-            'labels': {'type': 'object'}
-        }
-    )
+        'set-labels',
+        labels={'type': 'object', "additionalProperties": Lookup.lookup_type({'type': 'string'})},
+        remove={'type': 'array', 'items': {'type': 'string'}})
 
     def validate(self):
-        if not self.data.get('labels') and not (self.data.get('label') and self.data.get('value')):
-            raise FilterValidationError(
-                "Must specify either labels or a label and value")
-
-        if self.data.get('labels') and self.data.get('label'):
-            raise FilterValidationError(
-                "Can't specify both labels and label, choose one")
-
-        return self
+        if not self.data.get('labels') and not self.data.get('remove'):
+            raise FilterValidationError("Must specify one of labels or remove")
 
     def get_labels_to_add(self, resource):
-        return self.data.get('labels') or {Lookup.extract(
-            self.data.get('label'), resource): Lookup.extract(self.data.get('value'), resource)}
-
-
-class RemoveLabel(BaseLabelAction):
-    """Removes labels from GCP resources
-
-    :example:
-
-    This policy will remove label for all existing resource groups with a key such as environment
-
-        .. code-block:: yaml
-
-          policies:
-            - name: gcp-remove-label-resourcegroups
-              resource: gcp.instance
-              description: |
-                Remove label for all existing instances with a key such as environment
-              actions:
-               - type: unlabel
-                 labels: ['environment']
-    """
-    schema = type_schema(
-        'unlabel',
-        labels={'type': 'array', 'items': {'type': 'string'}})
-
-    def validate(self):
-        if not self.data.get('labels'):
-            raise FilterValidationError("Must specify labels")
-        return self
+        return {k: Lookup.extract(v, resource) for k, v in self.data.get('labels').items()}
 
     def get_labels_to_delete(self, resource):
-        return self.data.get('labels')
+        return self.data.get('remove')
 
 
 DEFAULT_TAG = "custodian_status"
@@ -202,7 +163,8 @@ class LabelDelayedAction(BaseLabelAction):
         days={'type': 'integer', 'minimum': 0, 'exclusiveMinimum': False},
         hours={'type': 'integer', 'minimum': 0, 'exclusiveMinimum': False},
         tz={'type': 'string'},
-        op={'type': 'string'})
+        op={'type': 'string'}
+    )
 
     default_template = 'resource_policy-{op}-{action_date}'
 
@@ -235,7 +197,6 @@ class LabelDelayedAction(BaseLabelAction):
             raise FilterValidationError(
                 "Invalid timezone specified %s in %s" % (
                     self.tz, self.manager.data))
-        return self
 
     def generate_timestamp(self, days, hours):
         n = datetime.now(tz=self.tz)

@@ -26,63 +26,35 @@ def get_policy(actions=None, filters=None):
     return policy
 
 
-class LabelTest(BaseTest):
+class SetLabelsActionTest(BaseTest):
 
     def test_schema_validate(self):
         self.assertTrue(
             self.load_policy(
                 get_policy([
-                    {'type': 'label',
-                     'label': 'test',
-                     'value': 'test_value'}
+                    {'type': 'set-labels',
+                     'labels': {'value': 'test_value'}}
                 ])))
 
         self.assertTrue(
             self.load_policy(
                 get_policy([
-                    {'type': 'label',
-                     'labels': {'value1': 'test',
-                                'value2': 'test_value'}}
+                    {'type': 'set-labels',
+                     'remove': ['test']}
                 ])))
 
         self.assertTrue(
             self.load_policy(
                 get_policy([
-                    {'type': 'label',
-                     'label': 'test',
-                     'value': {'type': 'resource',
-                               'key': 'test_value'}}
+                    {'type': 'set-labels',
+                     'labels': {'value': 'test_value'},
+                     'remove': ['test']}
                 ])))
 
         with self.assertRaises(FilterValidationError):
-            # Must specify labels to add
+            # Must specify labels to add or remove
             self.load_policy(get_policy([
-                {'type': 'label'}
-            ]))
-
-        with self.assertRaises(FilterValidationError):
-            # Must not specify label and labels at once
-            self.load_policy(get_policy([
-                {'type': 'label',
-                'label': 'test',
-                'labels': {'label1': 'test1'}}
-            ]))
-
-
-class RemoveLabelTest(BaseTest):
-
-    def test_schema_validate(self):
-        self.assertTrue(
-            self.load_policy(
-                get_policy([
-                    {'type': 'unlabel',
-                     'labels': ['test']}
-                ])))
-
-        with self.assertRaises(FilterValidationError):
-            # Must specify labels to remove
-            self.load_policy(get_policy([
-                {'type': 'unlabel'}
+                {'type': 'set-labels'}
             ]))
 
 

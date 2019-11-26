@@ -111,9 +111,8 @@ class InstanceTest(BaseTest):
             {'name': 'ilabel',
              'resource': 'gcp.instance',
              'filters': [{'name': 'test-ingwar'}],
-             'actions': [{'type': 'label',
-                          'label': 'test_label',
-                          'value': 'test_value'}]},
+             'actions': [{'type': 'set-labels',
+                          'labels': {'test_label': 'test_value'}}]},
             session_factory=factory)
         resources = p.run()
         self.assertEqual(len(resources), 1)
@@ -215,9 +214,8 @@ class DiskTest(BaseTest):
             {'name': 'disk-label',
              'resource': 'gcp.disk',
              'filters': [{'name': 'test-ingwar'}],
-             'actions': [{'type': 'label',
-                          'label': 'test_label',
-                          'value': 'test_value'}]},
+             'actions': [{'type': 'set-labels',
+                          'labels': {'test_label': 'test_value'}}]},
             session_factory=factory)
         resources = p.run()
         self.assertEqual(len(resources), 1)
