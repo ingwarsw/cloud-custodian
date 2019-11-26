@@ -30,15 +30,17 @@ class BaseLabelAction(MethodAction):
     method_spec = {}
 
     def get_labels_to_add(self, resource):
-        return {}
+        return None
 
     def get_labels_to_delete(self, resource):
-        return {}
+        return None
 
     def _merge_labels(self, current_labels, new_labels, remove_labels):
         result = dict(current_labels)
-        result.update(new_labels)
-        result = {k: v for k, v in result.items() if k not in remove_labels}
+        if new_labels:
+            result.update(new_labels)
+        if remove_labels:
+            result = {k: v for k, v in result.items() if k not in remove_labels}
         return result
 
     def get_operation_name(self, model, resource):
