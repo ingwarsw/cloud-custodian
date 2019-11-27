@@ -104,16 +104,9 @@ class MetricsFilter(Filter):
     """
 
     DEFAULT_TIMEFRAME = 24
-    DEFAULT_INTERVAL = 'P1D'
-    DEFAULT_AGGREGATION = 'average'
-
-    aggregation_funcs = {
-        'average': Math.mean,
-        'total': Math.sum,
-        'count': Math.sum,
-        'minimum': Math.max,
-        'maximum': Math.min
-    }
+    DEFAULT_ALIGNMENT_PERIOD = 'PT1M'
+    DEFAULT_ALIGNAER = 'mean'
+    DEFAULT_AGGREGATION = 'mean'
 
     schema = {
         'type': 'object',
@@ -125,9 +118,43 @@ class MetricsFilter(Filter):
             'op': {'enum': list(scalar_ops.keys())},
             'threshold': {'type': 'number'},
             'timeframe': {'type': 'number'},
-            'interval': {'enum': [
+            'alignment_period': {'enum': [
                 'PT1M', 'PT5M', 'PT15M', 'PT30M', 'PT1H', 'PT6H', 'PT12H', 'P1D']},
-            'aggregation': {'enum': ['total', 'average', 'count', 'minimum', 'maximum']},
+            'aligner': {'enum': ['none',
+                                 'delta',
+                                 'rate',
+                                 'interpolate',
+                                 'next_older',
+                                 'min',
+                                 'max',
+                                 'mean',
+                                 'count',
+                                 'sum',
+                                 'stddev',
+                                 'count_true',
+                                 'count_false',
+                                 'fraction_true',
+                                 'percentile_99',
+                                 'percentile_95',
+                                 'percentile_50',
+                                 'percentile_05',
+                                 'percent_change',
+                                 ]},
+            'aggregation': {'enum': ['none',
+                                     'mean',
+                                     'min',
+                                     'max',
+                                     'sum',
+                                     'stddev',
+                                     'count',
+                                     'count_true',
+                                     'count_false',
+                                     'fraction_true',
+                                     'percentile_99',
+                                     'percentile_95',
+                                     'percentile_50',
+                                     'percentile_05'
+                                     ]},
             'no_data_action': {'enum': ['include', 'exclude']},
             'filter': {'type': 'string'}
         }
@@ -144,23 +171,25 @@ class MetricsFilter(Filter):
         self.threshold = self.data.get('threshold')
         # Number of hours from current UTC time
         self.timeframe = float(self.data.get('timeframe', self.DEFAULT_TIMEFRAME))
-        # Interval as defined by Stackdriver SDK
-        self.interval = isodate.parse_duration(self.data.get('interval', self.DEFAULT_INTERVAL))
+        # Alignment Period as defined by 
+        # https://cloud.google.com/monitoring/api/ref_v3/rest/v3/projects.alertPolicies#Aggregation
+        self.alignment_period = isodate.parse_duration(self.data.get('alignment_period', self.DEFAULT_ALIGNMENT_PERIOD))
+        # Aligner
+        self.aligner = self.data.get('aligner', self.DEFAULT_ALIGNAER)
         # Aggregation as defined by Stackdriver SDK
         self.aggregation = self.data.get('aggregation', self.DEFAULT_AGGREGATION)
-        # Aggregation function to be used locally
-        self.func = self.aggregation_funcs[self.aggregation]
         # Used to reduce the set of metric data returned
         self.filter = self.data.get('filter', None)
         # Include or exclude resources if there is no metric data available
         self.no_data_action = self.data.get('no_data_action', 'exclude')
+        
 
     def process(self, resources, event=None):
+        # Project id
         self.project_id = local_session(self.manager.source.query.session_factory).get_default_project()
-
         # Create Stackdriver Monitor client
         self.client = local_session(self.manager.source.query.session_factory).client('monitoring', 'v3', 'projects.timeSeries')
-
+        
         # Process each resource in a separate thread, returning all that pass filter
         with self.executor_factory(max_workers=3) as w:
             processed = list(w.map(self.process_resource, resources))
@@ -172,51 +201,40 @@ class MetricsFilter(Filter):
             return cached_metric_data['measurement']
         end_time = datetime.now()
         start_time = end_time - timedelta(hours=self.timeframe)
+
         params = {'name': "projects/{}".format(self.project_id),
                   'interval_startTime': start_time.isoformat('T') + 'Z',
                   'interval_endTime': end_time.isoformat('T') + 'Z',
-                  'aggregation_crossSeriesReducer': 'REDUCE_NONE',
-                  'aggregation_alignmentPeriod': '10s',
-                  'aggregation_perSeriesAligner': 'ALIGN_RATE',
-                  'filter': 'metric.type="agent.googleapis.com/disk/io_time" resource.type="gce_instance" metadata.system_labels."name"="jenkins-primelabs"'
+                  'aggregation_crossSeriesReducer': 'REDUCE_{}'.format(self.aggregation.upper()),
+                  'aggregation_alignmentPeriod': '{}s'.format(int(self.alignment_period.total_seconds())),
+                  'aggregation_perSeriesAligner': 'ALIGN_{}'.format(self.aligner.upper()),
+                  'filter': self.get_filter(resource),
         }
             
         print("Params {}".format(params))
         metrics_data = self.client.execute_command('list', params)
-        print("result {}".format(metrics_data['timeSeries'][0]['points']))
+        print("result {}".format(metrics_data))
 
-        # .metrics.list(
-                # self.get_resource_id(resource),
-                # timespan=self.timespan,
-                # interval=self.interval,
-                # metricnames=self.metric,
-                # aggregation=self.aggregation,
-                # filter=self.get_filter(resource)
-            # )
-
-        if len(metrics_data['timeSeries'][0]['points']) > 0:
-            # and len(metrics_data.value[0].timeseries) > 0:
-            m = [item['value']['doubleValue'] for item in metrics_data['timeSeries'][0]['points']]
-        else:
-            m = None
+        values = [item['value'].values() for item in metrics_data['timeSeries'][0]['points']]
         
-        print("Modified {}".format(m))
+        # print("Modified {}".format(values))
 
-        self._write_metric_to_resource(resource, metrics_data, m)
+        self._write_metric_to_resource(resource, metrics_data, values)
 
-        return m
-
-    def get_resource_id(self, resource):
-        return resource['id']
+        return values
 
     def get_filter(self, resource):
-        return self.filter
+        filter = 'resource.labels.instance_id="{instance_id}" AND ' \
+                 'resource.labels.project_id="{project_id}" AND ' \
+                 'metric.type="{metric}"'.format(
+            instance_id=resource['id'], project_id=self.project_id, metric=self.metric)
+        return filter
 
-    def _write_metric_to_resource(self, resource, metrics_data, m):
+    def _write_metric_to_resource(self, resource, metrics_data, values):
         resource_metrics = resource.setdefault(get_annotation_prefix('metrics'), {})
         resource_metrics[self._get_metrics_cache_key()] = {
             'metrics_data': metrics_data,
-            'measurement': m,
+            'measurement': values,
         }
 
     def _get_metrics_cache_key(self):
@@ -224,7 +242,7 @@ class MetricsFilter(Filter):
             self.metric,
             self.aggregation,
             self.timeframe,
-            self.interval,
+            self.alignment_period,
             self.filter,
         )
 
@@ -238,7 +256,7 @@ class MetricsFilter(Filter):
         m_data = self.get_metric_data(resource)
         if m_data is None:
             return self.no_data_action == 'include'
-        aggregate_value = self.func(m_data)
+        # aggregate_value = self.func(m_data)
         return self.op(aggregate_value, self.threshold)
 
     def process_resource(self, resource):
