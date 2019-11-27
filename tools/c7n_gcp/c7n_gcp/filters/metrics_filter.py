@@ -13,7 +13,6 @@
 # limitations under the License.
 
 import operator
-import isodate
 
 from datetime import datetime, timedelta
 
@@ -22,22 +21,6 @@ from c7n.filters import FilterValidationError, Filter
 
 from c7n_gcp.provider import resources as gcp_resources
 
-from c7n_azure.utils import (Math)
-
-scalar_ops = {
-    'eq': operator.eq,
-    'equal': operator.eq,
-    'ne': operator.ne,
-    'not-equal': operator.ne,
-    'gt': operator.gt,
-    'greater-than': operator.gt,
-    'ge': operator.ge,
-    'gte': operator.ge,
-    'le': operator.le,
-    'lte': operator.le,
-    'lt': operator.lt,
-    'less-than': operator.lt
-}
 
 class MetricsFilter(Filter):
     """
@@ -102,11 +85,25 @@ class MetricsFilter(Filter):
                 filter:  "DatabaseResourceId eq '*'"
 
     """
-
     DEFAULT_TIMEFRAME = 24
-    DEFAULT_ALIGNMENT_PERIOD = 'PT1M'
+    # DEFAULT_ALIGNMENT_PERIOD = 'PT1M'
     DEFAULT_ALIGNAER = 'mean'
     DEFAULT_AGGREGATION = 'mean'
+    
+    scalar_ops = {
+        'eq': operator.eq,
+        'equal': operator.eq,
+        'ne': operator.ne,
+        'not-equal': operator.ne,
+        'gt': operator.gt,
+        'greater-than': operator.gt,
+        'ge': operator.ge,
+        'gte': operator.ge,
+        'le': operator.le,
+        'lte': operator.le,
+        'lt': operator.lt,
+        'less-than': operator.lt
+    }
 
     schema = {
         'type': 'object',
@@ -118,10 +115,7 @@ class MetricsFilter(Filter):
             'op': {'enum': list(scalar_ops.keys())},
             'threshold': {'type': 'number'},
             'timeframe': {'type': 'number'},
-            'alignment_period': {'enum': [
-                'PT1M', 'PT5M', 'PT15M', 'PT30M', 'PT1H', 'PT6H', 'PT12H', 'P1D']},
-            'aligner': {'enum': ['none',
-                                 'delta',
+            'aligner': {'enum': ['delta',
                                  'rate',
                                  'interpolate',
                                  'next_older',
@@ -140,8 +134,7 @@ class MetricsFilter(Filter):
                                  'percentile_05',
                                  'percent_change',
                                  ]},
-            'aggregation': {'enum': ['none',
-                                     'mean',
+            'aggregation': {'enum': ['mean',
                                      'min',
                                      'max',
                                      'sum',
@@ -166,14 +159,14 @@ class MetricsFilter(Filter):
         # Metric name as defined by Stackdriver SDK
         self.metric = self.data.get('metric')
         # gt (>), ge  (>=), eq (==), le (<=), lt (<)
-        self.op = scalar_ops[self.data.get('op')]
+        self.op = self.scalar_ops[self.data.get('op')]
         # Value to compare metric value with self.op
         self.threshold = self.data.get('threshold')
         # Number of hours from current UTC time
         self.timeframe = float(self.data.get('timeframe', self.DEFAULT_TIMEFRAME))
         # Alignment Period as defined by 
         # https://cloud.google.com/monitoring/api/ref_v3/rest/v3/projects.alertPolicies#Aggregation
-        self.alignment_period = isodate.parse_duration(self.data.get('alignment_period', self.DEFAULT_ALIGNMENT_PERIOD))
+        # self.alignment_period = isodate.parse_duration(self.data.get('alignment_period', self.DEFAULT_ALIGNMENT_PERIOD))
         # Aligner
         self.aligner = self.data.get('aligner', self.DEFAULT_ALIGNAER)
         # Aggregation as defined by Stackdriver SDK
@@ -198,7 +191,7 @@ class MetricsFilter(Filter):
     def get_metric_data(self, resource):
         cached_metric_data = self._get_cached_metric_data(resource)
         if cached_metric_data:
-            return cached_metric_data['measurement']
+            return cached_metric_data['value']
         end_time = datetime.now()
         start_time = end_time - timedelta(hours=self.timeframe)
 
@@ -206,7 +199,7 @@ class MetricsFilter(Filter):
                   'interval_startTime': start_time.isoformat('T') + 'Z',
                   'interval_endTime': end_time.isoformat('T') + 'Z',
                   'aggregation_crossSeriesReducer': 'REDUCE_{}'.format(self.aggregation.upper()),
-                  'aggregation_alignmentPeriod': '{}s'.format(int(self.alignment_period.total_seconds())),
+                  'aggregation_alignmentPeriod': '86400000s', # 1000 days
                   'aggregation_perSeriesAligner': 'ALIGN_{}'.format(self.aligner.upper()),
                   'filter': self.get_filter(resource),
         }
@@ -214,14 +207,19 @@ class MetricsFilter(Filter):
         print("Params {}".format(params))
         metrics_data = self.client.execute_command('list', params)
         print("result {}".format(metrics_data))
-
-        values = [item['value'].values() for item in metrics_data['timeSeries'][0]['points']]
         
-        # print("Modified {}".format(values))
+        if not len(metrics_data['timeSeries']) or not len(metrics_data['timeSeries'][0]['points']):
+            value = None
+        elif len(metrics_data['timeSeries']) > 1 or len(metrics_data['timeSeries'][0]['points']) > 1:
+            raise ValueError("Too much series or points {}".format(metrics_data))
+        else:
+            value = float(list(metrics_data['timeSeries'][0]['points'][0]['value'].values())[0])
+        
+        print("Value {}".format(value))
 
-        self._write_metric_to_resource(resource, metrics_data, values)
+        self._write_metric_to_resource(resource, metrics_data, value)
 
-        return values
+        return value
 
     def get_filter(self, resource):
         filter = 'resource.labels.instance_id="{instance_id}" AND ' \
@@ -230,20 +228,21 @@ class MetricsFilter(Filter):
             instance_id=resource['id'], project_id=self.project_id, metric=self.metric)
         return filter
 
-    def _write_metric_to_resource(self, resource, metrics_data, values):
+    def _write_metric_to_resource(self, resource, metrics_data, value):
         resource_metrics = resource.setdefault(get_annotation_prefix('metrics'), {})
         resource_metrics[self._get_metrics_cache_key()] = {
             'metrics_data': metrics_data,
-            'measurement': values,
+            'value': value,
         }
 
     def _get_metrics_cache_key(self):
-        return "{}, {}, {}, {}, {}".format(
-            self.metric,
-            self.aggregation,
-            self.timeframe,
-            self.alignment_period,
-            self.filter,
+        return "metric: {metric}, aggregation: {aggregation}, aligner: {aligner}, " \
+               "timeframe: {timeframe}, filter: {filter}".format(
+            metric=self.metric,
+            aggregation=self.aggregation,
+            aligner=self.aligner,
+            timeframe=self.timeframe,
+            filter=self.filter,
         )
 
     def _get_cached_metric_data(self, resource):
@@ -253,11 +252,10 @@ class MetricsFilter(Filter):
         return metrics.get(self._get_metrics_cache_key())
 
     def passes_op_filter(self, resource):
-        m_data = self.get_metric_data(resource)
-        if m_data is None:
+        value = self.get_metric_data(resource)
+        if value is None:
             return self.no_data_action == 'include'
-        # aggregate_value = self.func(m_data)
-        return self.op(aggregate_value, self.threshold)
+        return self.op(value, self.threshold)
 
     def process_resource(self, resource):
         return resource if self.passes_op_filter(resource) else None
