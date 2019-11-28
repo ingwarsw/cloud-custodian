@@ -184,7 +184,7 @@ class MetricsFilter(Filter):
         self.client = local_session(self.manager.source.query.session_factory).client('monitoring', 'v3', 'projects.timeSeries')
         
         # Process each resource in a separate thread, returning all that pass filter
-        with self.executor_factory(max_workers=3) as w:
+        with self.executor_factory(max_workers=10) as w:
             processed = list(w.map(self.process_resource, resources))
             return [item for item in processed if item is not None]
 
@@ -204,28 +204,32 @@ class MetricsFilter(Filter):
                   'filter': self.get_filter(resource),
         }
             
-        print("Params {}".format(params))
+        # print("Params {}".format(params))
         metrics_data = self.client.execute_command('list', params)
-        print("result {}".format(metrics_data))
+        # print("result {}".format(metrics_data))
         
-        if not len(metrics_data['timeSeries']) or not len(metrics_data['timeSeries'][0]['points']):
+        if not metrics_data or not len(metrics_data['timeSeries']) or not len(metrics_data['timeSeries'][0]['points']):
             value = None
         elif len(metrics_data['timeSeries']) > 1 or len(metrics_data['timeSeries'][0]['points']) > 1:
             raise ValueError("Too much series or points {}".format(metrics_data))
         else:
             value = float(list(metrics_data['timeSeries'][0]['points'][0]['value'].values())[0])
         
-        print("Value {}".format(value))
+        # print("Value {}".format(value))
 
         self._write_metric_to_resource(resource, metrics_data, value)
 
         return value
 
     def get_filter(self, resource):
-        filter = 'resource.labels.instance_id="{instance_id}" AND ' \
-                 'resource.labels.project_id="{project_id}" AND ' \
-                 'metric.type="{metric}"'.format(
-            instance_id=resource['id'], project_id=self.project_id, metric=self.metric)
+        filter = 'resource.labels.instance_id="{instance_id}" ' \
+                 'resource.labels.project_id="{project_id}" ' \
+                 'metric.type="{metric}" ' \
+                 '{filter}'.format(
+            instance_id=resource['id'],
+            project_id=self.project_id,
+            metric=self.metric,
+            filter=self.filter)
         return filter
 
     def _write_metric_to_resource(self, resource, metrics_data, value):
