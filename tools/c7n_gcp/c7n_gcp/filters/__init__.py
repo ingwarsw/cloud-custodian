@@ -14,3 +14,4 @@
 #
 
 from .log_filter import StackdriverLogFilter
+from .metrics_filter import MetricsFilter
