@@ -45,6 +45,8 @@ def custodian_archive(packages=None):
     requirements.add('google-auth>=1.4.1')
     requirements.add('google-auth-httplib2>=0.0.3')
     requirements.add('google-api-python-client>=1.7.3')
+    requirements.add('google-cloud-logging>=1.6.0')
+    requirements.add('google-cloud-monitoring>=0.3.0')
 
     archive.add_contents(
         'requirements.txt',

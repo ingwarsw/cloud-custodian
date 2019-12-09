@@ -172,7 +172,7 @@ class MetricsFilter(Filter):
         # Aggregation as defined by Stackdriver SDK
         self.aggregation = self.data.get('aggregation', self.DEFAULT_AGGREGATION)
         # Used to reduce the set of metric data returned
-        self.filter = self.data.get('filter', None)
+        self.filter = self.data.get('filter', '')
         # Include or exclude resources if there is no metric data available
         self.no_data_action = self.data.get('no_data_action', 'exclude')
         
