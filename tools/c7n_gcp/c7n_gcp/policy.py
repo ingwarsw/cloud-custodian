@@ -152,6 +152,10 @@ class ApiAuditMode(FunctionMode):
         if not resources:
             return
 
+        self.policy.ctx.metrics.put_metric(
+            'ResourceCount', len(resources), 'Count', Scope="Policy",
+            buffer=False)
+
         for action in self.policy.resource_manager.actions:
             if isinstance(action, EventAction):
                 action.process(resources, event)
