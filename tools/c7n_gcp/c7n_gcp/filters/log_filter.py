@@ -46,11 +46,11 @@ class StackdriverLogFilter(ValueFilter):
                 value: TERMINATED
               - type: stackdriver-logs
                 filter_days: 7
-                filter: |
+                filter: >
                     resource.type=gce_instance AND
                     logName="projects/{account_id}/logs/cloudaudit.googleapis.com%2Factivity" AND
                     protoPayload.methodName:compute.instances.stop
-                key: c7n:filtered_logs
+                key: logs
                 value: empty
 
     """
@@ -64,9 +64,12 @@ class StackdriverLogFilter(ValueFilter):
 
     def __init__(self, data, manager=None):
         super(StackdriverLogFilter, self).__init__(data, manager)
-        
+
         self.filter = self.data.get('filter', '')
         self.time_from = datetime.now() - timedelta(days=self.data.get('filter_days', 30))
+
+        self.annotation = get_annotation_prefix('filtered_logs')
+        self.annotation_instance = self._get_metrics_cache_key()
 
     def validate(self):
         if self.data.get('filter_days') < 0:
@@ -76,8 +79,9 @@ class StackdriverLogFilter(ValueFilter):
         super(StackdriverLogFilter, self).validate()
 
     def process(self, resources, event=None):
-        self.project_id = local_session(self.manager.source.query.session_factory).get_default_project()
-        self.client = local_session(self.manager.source.query.session_factory).client('logging', 'v2', 'entries')
+        session = local_session(self.manager.source.query.session_factory)
+        self.project_id = session.get_default_project()
+        self.client = session.client('logging', 'v2', 'entries')
 
         results = []
         for resource_set in chunks(resources, 100):
@@ -93,34 +97,41 @@ class StackdriverLogFilter(ValueFilter):
             'resourceNames': "projects/{}".format(self.project_id),
             'filter': filter_,
         }}
-        print("Filter: {}".format(filter_))
-        entries = self.client.execute_command('list', params).get('entries', [])
+        entries = []
+        for page in self.client.execute_search_query('list', params):
+            entries.extend(page.get('entries', []))
 
-        id_function = lambda e: e['resource']['labels']['instance_id']
-        sorted_entries = sorted(entries, key=id_function)
+        sorted_entries = sorted(entries, key=self._get_id)
 
-        for resource_id, logs in itertools.groupby(sorted_entries, key=id_function):
+        for resource_id, logs in itertools.groupby(sorted_entries, key=self._get_id):
             self._write_logs_to_resource(resource_map[resource_id], list(logs))
 
         return resource_set
+
+    def _get_id(self, resource):
+        return resource['resource']['labels']['instance_id']
 
     def get_filter(self, resource_map):
         filter_ = self.data.get('filter')
         filter_ = "timestamp>={time_from:%Y-%m-%d} AND " \
                   "resource.labels.instance_id = ({resource_ids}) AND " \
-                  "({filter_})".format(
-            resource_ids=" OR ".join(resource_map.keys()),
-            time_from=self.time_from,
-            project_id=self.project_id,
-            filter_=filter_)
+                  "({filter_})".format(resource_ids=" OR ".join(resource_map.keys()),
+                                       time_from=self.time_from,
+                                       filter_=filter_)
         return filter_
 
     def _get_metrics_cache_key(self):
-        return self.type
+        return "logs_{}".format(abs(hash(self.filter)))
 
     def _write_logs_to_resource(self, resource, logs):
-        resource_metrics = resource.setdefault(get_annotation_prefix('filtered_logs'), {})
-        resource_metrics[self._get_metrics_cache_key()] = logs
+        resource_metrics = resource.setdefault(self.annotation, {})
+        resource_metrics[self.annotation_instance] = logs
+
+    def get_resource_value(self, key, instance):
+        annotation_data = {"logs": instance.get(self.annotation, {})
+            .get(self.annotation_instance, [])}
+        return super(StackdriverLogFilter, self).get_resource_value(
+            key, annotation_data)
 
     @classmethod
     def register_resources(cls, registry, resource_class):
