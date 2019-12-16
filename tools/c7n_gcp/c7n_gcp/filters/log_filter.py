@@ -18,10 +18,6 @@ from c7n.filters import FilterValidationError, ValueFilter
 from c7n.utils import chunks, local_session, type_schema, get_annotation_prefix
 from c7n_gcp.provider import resources as gcp_resources
 from datetime import datetime, timedelta
-from google.api_core.exceptions import TooManyRequests
-from google.cloud.logging import Client as LogClient
-from google.cloud.logging.entries import LogEntry
-from retrying import retry
 
 
 class StackdriverLogFilter(ValueFilter):
@@ -70,6 +66,12 @@ class StackdriverLogFilter(ValueFilter):
                          filter_days={'type': 'number', 'minimum': 0})
     schema_alias = True
 
+    def __init__(self, data, manager=None):
+        super(StackdriverLogFilter, self).__init__(data, manager)
+        
+        self.filter = self.data.get('filter', '')
+        self.time_from = datetime.now() - timedelta(days=self.data.get('filter_days', 30))
+
     def validate(self):
         if self.data.get('filter_days') < 0:
             raise FilterValidationError("Filter '{}': invalid filter_days < 0".format(self.type))
@@ -78,71 +80,47 @@ class StackdriverLogFilter(ValueFilter):
         super(StackdriverLogFilter, self).validate()
 
     def process(self, resources, event=None):
-
         self.project_id = local_session(self.manager.source.query.session_factory).get_default_project()
-        client = LogClient(project=self.project_id, _use_grpc=False)
+        self.client = local_session(self.manager.source.query.session_factory).client('logging', 'v2', 'entries')
 
-        time_from = datetime.now() - timedelta(days=self.data.get('filter_days', 30))
-
-        # 83 instances, query time based on number of ids per call
-        # ------------
-        #   1 -> 302s
-        #  20 ->  42s
-        #  50 ->  22s
-        # 100 ->  13s
         results = []
         for resource_set in chunks(resources, 100):
-            results.extend(self.process_resources(resource_set, client, time_from))
+            results.extend(self.process_resources(resource_set))
 
         return super(StackdriverLogFilter, self).process(results, event=None)
 
-    def is_retryable_exception(e):
-        return isinstance(e, TooManyRequests)
-
-    @retry(retry_on_exception=is_retryable_exception,
-           wait_exponential_multiplier=1000,
-           wait_exponential_max=10000,
-           stop_max_attempt_number=10)
-    def process_resources(self, resource_set, client, time_from):
+    def process_resources(self, resource_set):
         resource_map = {x['id']: x for x in resource_set}
-        filter_ = self.get_filter(resource_map, time_from)
+        filter_ = self.get_filter(resource_map)
 
+        params = {'body': {
+            'resourceNames': "projects/{}".format(self.project_id),
+            'filter': filter_,
+        }}
         print("Filter: {}".format(filter_))
-        entries = client.list_entries(filter_=filter_)
+        entries = self.client.execute_command('list', params).get('entries', [])
 
-        print("Mapuje")
-        entries = map(self._map_entry, entries)
+        id_function = lambda e: e['resource']['labels']['instance_id']
+        sorted_entries = sorted(entries, key=id_function)
 
-        print("Sortuje")
-        sorted_entries = sorted(entries, key=lambda e: e['resource']['labels']['instance_id'])
-
-        print("Grupuje")
-        for resource_id, logs in itertools.groupby(sorted_entries,
-                                                   key=lambda e: e['resource']['labels']['instance_id']):
+        for resource_id, logs in itertools.groupby(sorted_entries, key=id_function):
             self._write_logs_to_resource(resource_map[resource_id], list(logs))
 
         return resource_set
 
-    def get_filter(self, resource_map, time_from):
+    def get_filter(self, resource_map):
         filter_ = self.data.get('filter')
         filter_ = "timestamp>={time_from:%Y-%m-%d} AND " \
                   "resource.labels.instance_id = ({resource_ids}) AND " \
-                  "log_name=\"projects/{project_id}/logs/cloudaudit.googleapis.com%2Factivity\" AND " \
                   "({filter_})".format(
             resource_ids=" OR ".join(resource_map.keys()),
-            time_from=time_from,
+            time_from=self.time_from,
             project_id=self.project_id,
             filter_=filter_)
         return filter_
 
-    @staticmethod
-    def _map_entry(entry):
-        json_entry = LogEntry.to_api_repr(entry)
-        json_entry['payload'] = entry.payload
-        return json_entry
-
     def _get_metrics_cache_key(self):
-        return "test"
+        return self.type
 
     def _write_logs_to_resource(self, resource, logs):
         resource_metrics = resource.setdefault(get_annotation_prefix('filtered_logs'), {})
