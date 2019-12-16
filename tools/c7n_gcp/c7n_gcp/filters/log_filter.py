@@ -12,17 +12,12 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from datetime import datetime, timedelta
+import itertools
 
-from google.cloud.logging import Client as LogClient
-from google.cloud.logging.entries import LogEntry
-from google.api_core.exceptions import TooManyRequests
-from retrying import retry
-
-from c7n.utils import chunks, local_session, type_schema
 from c7n.filters import FilterValidationError, ValueFilter
-
+from c7n.utils import chunks, local_session, type_schema, get_annotation_prefix
 from c7n_gcp.provider import resources as gcp_resources
+from datetime import datetime, timedelta
 
 
 class StackdriverLogFilter(ValueFilter):
@@ -51,15 +46,11 @@ class StackdriverLogFilter(ValueFilter):
                 value: TERMINATED
               - type: stackdriver-logs
                 filter_days: 7
-                filter: |
+                filter: >
                     resource.type=gce_instance AND
-                    resource.labels.instance_id={resource[id]} AND
-                    (
-                        jsonPayload.event_subtype:compute.instances.stop OR
-                        jsonPayload.event_subtype:compute.instances.guestTerminate OR
-                        protoPayload.request.@type:type.googleapis.com/compute.instances.stop
-                    )
-                key: filtered_logs
+                    logName="projects/{account_id}/logs/cloudaudit.googleapis.com%2Factivity" AND
+                    protoPayload.methodName:compute.instances.stop
+                key: logs
                 value: empty
 
     """
@@ -71,6 +62,15 @@ class StackdriverLogFilter(ValueFilter):
                          filter_days={'type': 'number', 'minimum': 0})
     schema_alias = True
 
+    def __init__(self, data, manager=None):
+        super(StackdriverLogFilter, self).__init__(data, manager)
+
+        self.filter = self.data.get('filter', '')
+        self.time_from = datetime.now() - timedelta(days=self.data.get('filter_days', 30))
+
+        self.annotation = get_annotation_prefix('filtered_logs')
+        self.annotation_instance = self._get_metrics_cache_key()
+
     def validate(self):
         if self.data.get('filter_days') < 0:
             raise FilterValidationError("Filter '{}': invalid filter_days < 0".format(self.type))
@@ -79,45 +79,59 @@ class StackdriverLogFilter(ValueFilter):
         super(StackdriverLogFilter, self).validate()
 
     def process(self, resources, event=None):
-
-        project_id = local_session(self.manager.source.query.session_factory).get_default_project()
-        client = LogClient(project=project_id, _use_grpc=False)
-
-        time_from = datetime.now() - timedelta(days=self.data.get('filter_days', 30))
+        session = local_session(self.manager.source.query.session_factory)
+        self.project_id = session.get_default_project()
+        self.client = session.client('logging', 'v2', 'entries')
 
         results = []
-        for resource in resources:
-            results.extend([self.process_resource(resource, client, time_from)])
+        for resource_set in chunks(resources, 100):
+            results.extend(self.process_resources(resource_set))
 
         return super(StackdriverLogFilter, self).process(results, event=None)
 
-    def is_retryable_exception(e):
-        return isinstance(e, TooManyRequests)
+    def process_resources(self, resource_set):
+        resource_map = {x['id']: x for x in resource_set}
+        filter_ = self.get_filter(resource_map)
 
-    @retry(retry_on_exception=is_retryable_exception,
-           wait_exponential_multiplier=1000,
-           wait_exponential_max=10000,
-           stop_max_attempt_number=10)
-    def process_resource(self, resource, client, time_from):
-        filter_ = self.data.get('filter').format(resource=resource)
-        filter_ = "timestamp>={time_from:%Y-%m-%d} AND ({filter_})".format(
-                    time_from=time_from,
-                    filter_=filter_)
+        params = {'body': {
+            'resourceNames': "projects/{}".format(self.project_id),
+            'filter': filter_,
+        }}
+        entries = []
+        for page in self.client.execute_search_query('list', params):
+            entries.extend(page.get('entries', []))
 
-        # print("Filter: {}".format(filter_))
-        entries = client.list_entries(filter_=filter_)
+        sorted_entries = sorted(entries, key=self._get_id)
 
-        def map_entry(entry):
-            json_entry = LogEntry.to_api_repr(entry)
-            json_entry["payload"] = entry.payload
-            return json_entry
+        for resource_id, logs in itertools.groupby(sorted_entries, key=self._get_id):
+            self._write_logs_to_resource(resource_map[resource_id], list(logs))
 
-        entries = list(map(map_entry, entries))
+        return resource_set
 
-        # We are modifying resource to save logs in result
-        resource['filtered_logs'] = entries
+    def _get_id(self, resource):
+        return resource['resource']['labels']['instance_id']
 
-        return resource
+    def get_filter(self, resource_map):
+        filter_ = self.data.get('filter')
+        filter_ = "timestamp>={time_from:%Y-%m-%d} AND " \
+                  "resource.labels.instance_id = ({resource_ids}) AND " \
+                  "({filter_})".format(resource_ids=" OR ".join(resource_map.keys()),
+                                       time_from=self.time_from,
+                                       filter_=filter_)
+        return filter_
+
+    def _get_metrics_cache_key(self):
+        return "logs_{}".format(abs(hash(self.filter)))
+
+    def _write_logs_to_resource(self, resource, logs):
+        resource_metrics = resource.setdefault(self.annotation, {})
+        resource_metrics[self.annotation_instance] = logs
+
+    def get_resource_value(self, key, instance):
+        annotation_data = {"logs": instance.get(self.annotation, {})
+            .get(self.annotation_instance, [])}
+        return super(StackdriverLogFilter, self).get_resource_value(
+            key, annotation_data)
 
     @classmethod
     def register_resources(cls, registry, resource_class):
