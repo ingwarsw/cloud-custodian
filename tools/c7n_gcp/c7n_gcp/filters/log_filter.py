@@ -48,13 +48,9 @@ class StackdriverLogFilter(ValueFilter):
                 filter_days: 7
                 filter: |
                     resource.type=gce_instance AND
-                    resource.labels.instance_id={resource[id]} AND
-                    (
-                        jsonPayload.event_subtype:compute.instances.stop OR
-                        jsonPayload.event_subtype:compute.instances.guestTerminate OR
-                        protoPayload.request.@type:type.googleapis.com/compute.instances.stop
-                    )
-                key: filtered_logs
+                    logName="projects/{account_id}/logs/cloudaudit.googleapis.com%2Factivity" AND
+                    protoPayload.methodName:compute.instances.stop
+                key: c7n:filtered_logs
                 value: empty
 
     """
