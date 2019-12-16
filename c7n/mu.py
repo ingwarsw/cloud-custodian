@@ -38,7 +38,7 @@ from concurrent.futures import ThreadPoolExecutor
 # Its also used for release engineering on our pypi uploads
 try:
     import importlib_metadata as pkgmd
-except ImportError:
+except (ImportError, FileNotFoundError):
     pkgmd = None
 
 
@@ -1086,8 +1086,10 @@ class CloudWatchEventSource(object):
             payload['detail-type'] = events
         elif event_type == 'phd':
             payload['source'] = ['aws.health']
-            payload['detail'] = {
-                'eventTypeCode': list(self.data['events'])}
+            if self.data.get('events'):
+                payload['detail'] = {
+                    'eventTypeCode': list(self.data['events'])
+                }
             if self.data.get('categories', []):
                 payload['detail']['eventTypeCategory'] = self.data['categories']
         elif event_type == 'hub-finding':
