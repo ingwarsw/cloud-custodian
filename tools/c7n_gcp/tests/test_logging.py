@@ -46,37 +46,6 @@ class LogProjectSinkTest(BaseTest):
         self.assertEqual(resource[0]['name'], sink_name)
 
 
-class LogSinkTest(BaseTest):
-
-    def test_query(self):
-        project_id = 'cloud-custodian'
-        factory = self.replay_flight_data('logsink', project_id)
-        p = self.load_policy({
-            'name': 'logsink',
-            'resource': 'gcp.logsink'},
-            session_factory=factory)
-        resource = p.run()
-        self.assertEqual(len(resource), 1)
-
-    def test_get_log_sink(self):
-        project_id = 'cloud-custodian'
-        sink_name = "testqqqqqqqqqqqqqqqqq"
-        factory = self.replay_flight_data(
-            'log-project-sink-resource', project_id)
-        p = self.load_policy({'name': 'logsink',
-                              'resource': 'gcp.logsink',
-                              'mode': {
-                                  'type': 'gcp-audit',
-                                  'methods': ['google.logging.v2.ConfigServiceV2.CreateSink']}
-                              },
-                             session_factory=factory)
-
-        exec_mode = p.get_execution_mode()
-        event = event_data('log-create-project-sink.json')
-        resource = exec_mode.run(event, None)
-        self.assertEqual(resource[0]['name'], sink_name)
-
-
 class LogProjectMetricTest(BaseTest):
 
     def test_query(self):
