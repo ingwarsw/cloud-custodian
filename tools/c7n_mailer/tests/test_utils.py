@@ -15,6 +15,17 @@ class FormatStruct(unittest.TestCase):
         self.assertEqual(expected, actual)
 
 
+class StripPrefix(unittest.TestCase):
+
+    def test_strip_prefix(self):
+        self.assertEqual(utils.strip_prefix('aws.internet-gateway', 'aws.'), 'internet-gateway')
+        self.assertEqual(utils.strip_prefix('aws.s3', 'aws.'), 's3')
+        self.assertEqual(utils.strip_prefix('aws.webserver', 'aws.'), 'webserver')
+        self.assertEqual(utils.strip_prefix('nothing', 'aws.'), 'nothing')
+        self.assertEqual(utils.strip_prefix('azure.azserver', 'azure.'), 'azserver')
+        self.assertEqual(utils.strip_prefix('', 'aws.'), '')
+
+
 class ResourceFormat(unittest.TestCase):
 
     def test_efs(self):
@@ -45,6 +56,12 @@ class ResourceFormat(unittest.TestCase):
                 'aws.internet-gateway'),
             'id: igw-x  attachments: 0')
 
+    def test_s3(self):
+        self.assertEqual(
+            utils.resource_format(
+                {'Name': 'bucket-x'}, 'aws.s3'),
+            'bucket-x')
+
     def test_alb(self):
         self.assertEqual(
             utils.resource_format(
@@ -56,6 +73,27 @@ class ResourceFormat(unittest.TestCase):
             'arn: arn:aws:elasticloadbalancing:us-east-1:367930536793:'
             'loadbalancer/app/dev/1234567890'
             '  zones: 0  scheme: internal')
+
+    def test_cloudtrail(self):
+        self.assertEqual(
+            utils.resource_format(
+                {
+                    "Name": "trail-x",
+                    "S3BucketName": "trail-x-bucket",
+                    "IncludeGlobalServiceEvents": True,
+                    "IsMultiRegionTrail": False,
+                    "HomeRegion": "eu-west-2",
+                    "TrailARN": "arn:aws:cloudtrail:eu-west-2:123456789012:trail/trail-x",
+                    "LogFileValidationEnabled": True,
+                    "HasCustomEventSelectors": False,
+                    "HasInsightSelectors": False,
+                    "IsOrganizationTrail": False,
+                    "Tags": [],
+                },
+                "aws.cloudtrail",
+            ),
+            "trail-x",
+        )
 
 
 class GetAwsUsernameFromEvent(unittest.TestCase):

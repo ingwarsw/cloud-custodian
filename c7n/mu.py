@@ -38,7 +38,7 @@ from concurrent.futures import ThreadPoolExecutor
 # Its also used for release engineering on our pypi uploads
 try:
     import importlib_metadata as pkgmd
-except ImportError:
+except (ImportError, FileNotFoundError):
     pkgmd = None
 
 
@@ -463,6 +463,11 @@ class LambdaManager(object):
                 if k in LAMBDA_EMPTY_VALUES and LAMBDA_EMPTY_VALUES[k] == new_config[k]:
                     continue
                 changed.append(k)
+            # For role we allow name only configuration
+            elif k == 'Role':
+                if (new_config[k] != old_config[k] and
+                        not old_config[k].split('/', 1)[1] == new_config[k]):
+                    changed.append(k)
             elif new_config[k] != old_config[k]:
                 changed.append(k)
         return changed
@@ -863,7 +868,7 @@ class PolicyLambda(AbstractLambdaFunction):
 
     @property
     def runtime(self):
-        return self.policy.data['mode'].get('runtime', 'python3.7')
+        return self.policy.data['mode'].get('runtime', 'python3.8')
 
     @property
     def memory_size(self):
@@ -1086,8 +1091,10 @@ class CloudWatchEventSource(object):
             payload['detail-type'] = events
         elif event_type == 'phd':
             payload['source'] = ['aws.health']
-            payload['detail'] = {
-                'eventTypeCode': list(self.data['events'])}
+            if self.data.get('events'):
+                payload['detail'] = {
+                    'eventTypeCode': list(self.data['events'])
+                }
             if self.data.get('categories', []):
                 payload['detail']['eventTypeCategory'] = self.data['categories']
         elif event_type == 'hub-finding':

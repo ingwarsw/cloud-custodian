@@ -45,6 +45,7 @@ class AppELB(QueryResourceManager):
 
     class resource_type(TypeInfo):
         service = 'elbv2'
+        permission_prefix = 'elasticloadbalancing'
         enum_spec = ('describe_load_balancers', 'LoadBalancers', None)
         name = 'LoadBalancerName'
         id = 'LoadBalancerArn'
@@ -217,7 +218,7 @@ class WafEnabled(Filter):
 
         # generally frown on runtime validation errors, but also frown on
         # api calls during validation.
-        if target_acl_id not in name_id_map.values():
+        if target_acl and target_acl_id not in name_id_map.values():
             raise ValueError("Invalid target acl:%s, acl not found" % target_acl)
 
         arn_key = self.manager.resource_type.id
@@ -862,6 +863,7 @@ class AppELBTargetGroup(QueryResourceManager):
         enum_spec = ('describe_target_groups', 'TargetGroups', None)
         name = 'TargetGroupName'
         id = 'TargetGroupArn'
+        permission_prefix = 'elasticloadbalancing'
 
     filter_registry = FilterRegistry('app-elb-target-group.filters')
     action_registry = ActionRegistry('app-elb-target-group.actions')
