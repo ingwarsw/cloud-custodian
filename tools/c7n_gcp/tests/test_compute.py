@@ -150,7 +150,7 @@ class InstanceTest(BaseTest):
 
     def test_detach_disks_from_instance(self):
         project_id = 'custodian-tests'
-        factory = self.record_flight_data('instance-detach-disks', project_id=project_id)
+        factory = self.replay_flight_data('instance-detach-disks', project_id=project_id)
         p = self.load_policy(
             {'name': 'idetach',
              'resource': 'gcp.instance',
