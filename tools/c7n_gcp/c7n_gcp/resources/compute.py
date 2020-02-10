@@ -110,7 +110,8 @@ class DetachDisks(MethodAction):
     `Detaches <https://cloud.google.com/compute/docs/reference/rest/v1/instances/detachDisk>`_
     all disks from instance. The action does not specify any parameters.
 
-    It may be useful to be used before deleting instances (to not delete disks that are set to auto delete)
+    It may be useful to be used before deleting instances to not delete disks
+    that are set to auto delete.
 
     :Example:
 
