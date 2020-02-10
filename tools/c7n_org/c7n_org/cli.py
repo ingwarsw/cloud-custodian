@@ -239,7 +239,8 @@ def filter_accounts(accounts_config, tags, accounts, not_accounts=None):
     for a in accounts_config.get('accounts', ()):
         if not_accounts and a['name'] in not_accounts:
             continue
-        if accounts and a['name'] not in accounts:
+        account_id = a.get('account_id') or a.get('project_id') or a.get('subscription_id') or ''
+        if accounts and a['name'] not in accounts and account_id not in accounts:
             continue
         if tags:
             found = set()
@@ -656,6 +657,7 @@ def run(config, use, output_dir, accounts, tags, region,
                 log.warning(
                     "Error running policy in %s @ %s exception: %s",
                     a['name'], r, f.exception())
+                continue
 
             account_region_pcounts, account_region_success = f.result()
             for p in account_region_pcounts:
