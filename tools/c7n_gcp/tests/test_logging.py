@@ -50,7 +50,7 @@ class LogProjectSinkTest(BaseTest):
     def test_delete_project_sink(self):
         project_id = 'custodian-tests'
         resource_name = "test-sink"
-        factory = self.record_flight_data(
+        factory = self.replay_flight_data(
             'log-project-sink-delete', project_id)
         policy = self.load_policy({'name': 'log-project-sink-delete',
                                    'resource': 'gcp.log-project-sink',
