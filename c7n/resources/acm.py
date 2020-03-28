@@ -16,7 +16,7 @@ from __future__ import absolute_import, division, print_function, unicode_litera
 from c7n.actions import BaseAction
 from c7n.manager import resources
 from c7n.query import QueryResourceManager, DescribeSource, ConfigSource, TypeInfo
-from c7n.tags import universal_augment, register_universal_tags
+from c7n.tags import universal_augment
 from c7n.utils import type_schema, local_session
 
 
@@ -25,7 +25,14 @@ class Certificate(QueryResourceManager):
 
     class resource_type(TypeInfo):
         service = 'acm'
-        enum_spec = ('list_certificates', 'CertificateSummaryList', None)
+        enum_spec = (
+            'list_certificates',
+            'CertificateSummaryList',
+            {'Includes': {
+                'keyTypes': [
+                    'RSA_2048', 'RSA_1024', 'RSA_4096',
+                    'EC_prime256v1', 'EC_secp384r1',
+                    'EC_secp521r1']}})
         id = 'CertificateArn'
         name = 'DomainName'
         date = 'CreatedAt'
@@ -51,10 +58,6 @@ class DescribeCertificate(DescribeSource):
         return universal_augment(
             self.manager,
             super(DescribeCertificate, self).augment(resources))
-
-
-register_universal_tags(
-    Certificate.filter_registry, Certificate.action_registry, compatibility=False)
 
 
 @Certificate.action_registry.register('delete')

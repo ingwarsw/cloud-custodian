@@ -125,6 +125,11 @@ class LaunchInfo(object):
         if lid is not None:
             return (lid['LaunchTemplateId'], lid['Version'])
 
+        if 'MixedInstancesPolicy' in asg:
+            mip_spec = asg['MixedInstancesPolicy'][
+                'LaunchTemplate']['LaunchTemplateSpecification']
+            return (mip_spec['LaunchTemplateId'], mip_spec['Version'])
+
         # we've noticed some corner cases where the asg name is the lc name, but not
         # explicitly specified as launchconfiguration attribute.
         lid = asg['AutoScalingGroupName']
@@ -1390,6 +1395,7 @@ class MarkForOp(TagDelayedAction):
         key={'type': 'string'},
         tag={'type': 'string'},
         tz={'type': 'string'},
+        msg={'type': 'string'},
         message={'type': 'string'},
         days={'type': 'number', 'minimum': 0},
         hours={'type': 'number', 'minimum': 0})
@@ -1401,7 +1407,7 @@ class MarkForOp(TagDelayedAction):
         d = {
             'op': self.data.get('op', 'stop'),
             'tag': self.data.get('key', self.data.get('tag', DEFAULT_TAG)),
-            'msg': self.data.get('message', self.default_template),
+            'msg': self.data.get('message', self.data.get('msg', self.default_template)),
             'tz': self.data.get('tz', 'utc'),
             'days': self.data.get('days', 0),
             'hours': self.data.get('hours', 0)}

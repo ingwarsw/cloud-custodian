@@ -40,7 +40,7 @@ from c7n.config import Config
 from c7n.policy import PolicyCollection
 from c7n.provider import get_resource_class
 from c7n.reports.csvout import Formatter, fs_record_set
-from c7n.resources import load_resources
+from c7n.resources import load_available
 from c7n.utils import CONN_CACHE, dumps
 
 from c7n_org.utils import environ, account_tags
@@ -61,7 +61,7 @@ WORKER_COUNT = int(
 
 
 CONFIG_SCHEMA = {
-    '$schema': 'http://json-schema.org/schema#',
+    '$schema': 'http://json-schema.org/draft-07/schema',
     'id': 'http://schema.cloudcustodian.io/v0/orgrunner.json',
     'definitions': {
         'account': {
@@ -74,7 +74,10 @@ CONFIG_SCHEMA = {
             'properties': {
                 'name': {'type': 'string'},
                 'email': {'type': 'string'},
-                'account_id': {'type': 'string'},
+                'account_id': {
+                    'type': 'string',
+                    'pattern': '^[0-9]{12}$',
+                    'minLength': 12, 'maxLength': 12},
                 'profile': {'type': 'string', 'minLength': 3},
                 'tags': {'type': 'array', 'items': {'type': 'string'}},
                 'regions': {'type': 'array', 'items': {'type': 'string'}},
@@ -191,7 +194,7 @@ def init(config, use, debug, verbose, accounts, tags, policies, resource=None, p
     filter_policies(custodian_config, policy_tags, policies, resource)
     filter_accounts(accounts_config, tags, accounts)
 
-    load_resources()
+    load_available()
     MainThreadExecutor.c7n_async = False
     executor = debug and MainThreadExecutor or ProcessPoolExecutor
     return accounts_config, custodian_config, executor
@@ -236,7 +239,8 @@ def filter_accounts(accounts_config, tags, accounts, not_accounts=None):
     for a in accounts_config.get('accounts', ()):
         if not_accounts and a['name'] in not_accounts:
             continue
-        if accounts and a['name'] not in accounts:
+        account_id = a.get('account_id') or a.get('project_id') or a.get('subscription_id') or ''
+        if accounts and a['name'] not in accounts and account_id not in accounts:
             continue
         if tags:
             found = set()
@@ -273,6 +277,7 @@ def report_account(account, region, policies_config, output_path, cache_path, de
     output_path = os.path.join(output_path, account['name'], region)
     cache_path = os.path.join(cache_path, "%s-%s.cache" % (account['name'], region))
 
+    load_available()
     config = Config.empty(
         region=region,
         output_dir=output_path,
@@ -451,6 +456,8 @@ def run_script(config, output_dir, accounts, tags, region, echo, serial, script_
     if len(script_args) == 1 and " " in script_args[0]:
         script_args = script_args[0].split()
 
+    success = True
+
     with executor(max_workers=WORKER_COUNT) as w:
         futures = {}
         for a in accounts_config.get('accounts', ()):
@@ -466,6 +473,7 @@ def run_script(config, output_dir, accounts, tags, region, echo, serial, script_
                 log.warning(
                     "Error running script in %s @ %s exception: %s",
                     a['name'], r, f.exception())
+                success = False
             exit_code = f.result()
             if exit_code == 0:
                 log.info(
@@ -475,6 +483,10 @@ def run_script(config, output_dir, accounts, tags, region, echo, serial, script_
                 log.info(
                     "error running script on account:%s region:%s script: `%s`",
                     a['name'], r, " ".join(script_args))
+                success = False
+
+    if not success:
+        sys.exit(1)
 
 
 def accounts_iterator(config):
@@ -484,13 +496,15 @@ def accounts_iterator(config):
         d = {'account_id': a['subscription_id'],
              'name': a.get('name', a['subscription_id']),
              'regions': ['global'],
-             'tags': a.get('tags', ())}
+             'tags': a.get('tags', ()),
+             'vars': a.get('vars', {})}
         yield d
     for a in config.get('projects', ()):
         d = {'account_id': a['project_id'],
              'name': a.get('name', a['project_id']),
              'regions': ['global'],
-             'tags': a.get('tags', ())}
+             'tags': a.get('tags', ()),
+             'vars': a.get('vars', {})}
         yield d
 
 
@@ -501,6 +515,7 @@ def run_account(account, region, policies_config, output_path,
     logging.getLogger('custodian.output').setLevel(logging.ERROR + 1)
     CONN_CACHE.session = None
     CONN_CACHE.time = None
+    load_available()
 
     # allow users to specify interpolated output paths
     if '{' not in output_path:
@@ -534,13 +549,11 @@ def run_account(account, region, policies_config, output_path,
 
     with environ(**env_vars):
         for p in policies:
+            # Extend policy execution conditions with account information
+            p.conditions.env_vars['account'] = account
             # Variable expansion and non schema validation (not optional)
             p.expand_variables(p.get_variables(account.get('vars', {})))
             p.validate()
-
-            if p.region and p.region != region:
-                continue
-
             log.debug(
                 "Running policy:%s account:%s region:%s",
                 p.name, account['name'], region)
@@ -644,6 +657,7 @@ def run(config, use, output_dir, accounts, tags, region,
                 log.warning(
                     "Error running policy in %s @ %s exception: %s",
                     a['name'], r, f.exception())
+                continue
 
             account_region_pcounts, account_region_success = f.result()
             for p in account_region_pcounts:

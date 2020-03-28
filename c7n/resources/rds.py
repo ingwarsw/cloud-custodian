@@ -66,7 +66,7 @@ import c7n.filters.vpc as net_filters
 from c7n.manager import resources
 from c7n.query import QueryResourceManager, DescribeSource, ConfigSource, TypeInfo
 from c7n import tags
-from c7n.tags import universal_augment, register_universal_tags
+from c7n.tags import universal_augment
 
 from c7n.utils import (
     local_session, type_schema, get_retry, chunks, snapshot_identifier)
@@ -97,7 +97,7 @@ class RDS(QueryResourceManager):
         dimension = 'DBInstanceIdentifier'
         config_type = 'AWS::RDS::DBInstance'
         arn = 'DBInstanceArn'
-
+        universal_taggable = True
         default_report_fields = (
             'DBInstanceIdentifier',
             'DBName',
@@ -109,6 +109,7 @@ class RDS(QueryResourceManager):
             'PubliclyAccessible',
             'InstanceCreateTime',
         )
+        permissions_enum = ('rds:DescribeDBInstances',)
 
     filter_registry = filters
     action_registry = actions
@@ -136,11 +137,6 @@ class ConfigRDS(ConfigSource):
         resource['Tags'] = [{u'Key': t['key'], u'Value': t['value']}
           for t in item['supplementaryConfiguration']['Tags']]
         return resource
-
-
-register_universal_tags(
-    RDS.filter_registry,
-    RDS.action_registry)
 
 
 def _db_instance_eligible_for_backup(resource):
@@ -220,7 +216,7 @@ def _get_available_engine_upgrades(client, major=False):
 
     Example::
 
-      >>> _get_engine_upgrades(client)
+      >>> _get_available_engine_upgrades(client)
       {
          'oracle-se2': {'12.1.0.2.v2': '12.1.0.2.v5',
                         '12.1.0.2.v3': '12.1.0.2.v5'},
@@ -231,18 +227,20 @@ def _get_available_engine_upgrades(client, major=False):
       }
     """
     results = {}
-    engine_versions = client.describe_db_engine_versions()['DBEngineVersions']
-    for v in engine_versions:
-        if not v['Engine'] in results:
-            results[v['Engine']] = {}
-        if 'ValidUpgradeTarget' not in v or len(v['ValidUpgradeTarget']) == 0:
-            continue
-        for t in v['ValidUpgradeTarget']:
-            if not major and t['IsMajorVersionUpgrade']:
+    paginator = client.get_paginator('describe_db_engine_versions')
+    for page in paginator.paginate():
+        engine_versions = page['DBEngineVersions']
+        for v in engine_versions:
+            if not v['Engine'] in results:
+                results[v['Engine']] = {}
+            if 'ValidUpgradeTarget' not in v or len(v['ValidUpgradeTarget']) == 0:
                 continue
-            if LooseVersion(t['EngineVersion']) > LooseVersion(
-                    results[v['Engine']].get(v['EngineVersion'], '0.0.0')):
-                results[v['Engine']][v['EngineVersion']] = t['EngineVersion']
+            for t in v['ValidUpgradeTarget']:
+                if not major and t['IsMajorVersionUpgrade']:
+                    continue
+                if LooseVersion(t['EngineVersion']) > LooseVersion(
+                        results[v['Engine']].get(v['EngineVersion'], '0.0.0')):
+                    results[v['Engine']][v['EngineVersion']] = t['EngineVersion']
     return results
 
 
@@ -652,7 +650,7 @@ class CopySnapshotTags(BaseAction):
     schema = type_schema(
         'set-snapshot-copy-tags',
         enable={'type': 'boolean'})
-    permissions = ('rds:ModifyDBInstances',)
+    permissions = ('rds:ModifyDBInstance',)
 
     def process(self, resources):
         error = None
@@ -958,6 +956,8 @@ class RDSSnapshot(QueryResourceManager):
         date = 'SnapshotCreateTime'
         config_type = "AWS::RDS::DBSnapshot"
         filter_name = "DBSnapshotIdentifier"
+        universal_taggable = True
+        permissions_enum = ('rds:DescribeDBSnapshots',)
 
     def get_source(self, source_type):
         if source_type == 'describe':
@@ -983,11 +983,6 @@ class ConfigRDSSnapshot(ConfigSource):
           for t in item['supplementaryConfiguration']['Tags']]
         # TODO: Load DBSnapshotAttributes into annotation
         return resource
-
-
-register_universal_tags(
-    RDSSnapshot.filter_registry,
-    RDSSnapshot.action_registry)
 
 
 @RDSSnapshot.filter_registry.register('onhour')
@@ -1038,6 +1033,9 @@ class RDSSnapshotAge(AgeFilter):
         op={'$ref': '#/definitions/filters_common/comparison_operators'})
 
     date_attribute = 'SnapshotCreateTime'
+
+    def get_resource_date(self, i):
+        return i.get('SnapshotCreateTime')
 
 
 @RDSSnapshot.action_registry.register('restore')
@@ -1201,7 +1199,7 @@ class RegionCopySnapshot(BaseAction):
       - name: copy-encrypted-snapshots
         description: |
           copy snapshots under 1 day old to dr region with kms
-        resource: rdb-snapshot
+        resource: rds-snapshot
         region: us-east-1
         filters:
          - Status: available
@@ -1216,7 +1214,7 @@ class RegionCopySnapshot(BaseAction):
             target_key: arn:aws:kms:us-east-2:0000:key/cb291f53-c9cf61
             copy_tags: true
             tags:
-              - OriginRegion: us-east-1
+              OriginRegion: us-east-1
     """
 
     schema = type_schema(
@@ -1381,6 +1379,7 @@ class RDSSubnetGroup(QueryResourceManager):
             'describe_db_subnet_groups', 'DBSubnetGroups', None)
         filter_name = 'DBSubnetGroupName'
         filter_type = 'scalar'
+        permissions_enum = ('rds:DescribeDBSubnetGroups',)
 
     def augment(self, resources):
         _db_subnet_group_tags(
@@ -1663,3 +1662,4 @@ class ReservedRDS(QueryResourceManager):
         filter_type = 'list'
         arn_type = "reserved-db"
         arn = "ReservedDBInstanceArn"
+        permissions_enum = ('rds:DescribeReservedDBInstances',)

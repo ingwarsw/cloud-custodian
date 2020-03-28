@@ -21,20 +21,19 @@ import logging
 import os
 import pprint
 import sys
-import time
 
 import six
 import yaml
 from yaml.constructor import ConstructorError
 
-from c7n.exceptions import ClientError
+from c7n.exceptions import ClientError, PolicyValidationError
 from c7n.provider import clouds
 from c7n.policy import Policy, PolicyCollection, load as policy_load
-from c7n.schema import ElementSchema, generate
-from c7n.utils import dumps, load_file, local_session, SafeLoader, yaml_dump
+from c7n.schema import ElementSchema, StructureParser, generate
+from c7n.utils import load_file, local_session, SafeLoader, yaml_dump
 from c7n.config import Bag, Config
 from c7n import provider
-from c7n.resources import load_resources
+from c7n.resources import load_resources, load_available
 
 
 log = logging.getLogger('custodian.commands')
@@ -52,7 +51,6 @@ def policy_command(f):
         if not validate:
             log.debug('Policy validation disabled')
 
-        load_resources()
         vars = _load_vars(options)
 
         errors = 0
@@ -78,7 +76,11 @@ def policy_command(f):
                     fp, str(e)))
                 errors += 1
                 continue
-
+            except PolicyValidationError as e:
+                log.error('invalid policy file: {} error: {}'.format(
+                    fp, str(e)))
+                errors += 1
+                continue
             if collection is None:
                 log.debug('Loaded file {}. Contained no policies.'.format(fp))
             else:
@@ -197,16 +199,17 @@ class DuplicateKeyCheckLoader(SafeLoader):
 
 def validate(options):
     from c7n import schema
-    load_resources()
+
     if len(options.configs) < 1:
         log.error('no config files specified')
         sys.exit(1)
 
     used_policy_names = set()
-    schm = schema.generate()
+    structure = StructureParser()
     errors = []
 
     for config_file in options.configs:
+
         config_file = os.path.expanduser(config_file)
         if not os.path.exists(config_file):
             raise ValueError("Invalid path for config %r" % config_file)
@@ -221,6 +224,16 @@ def validate(options):
                 log.error("The config file must end in .json, .yml or .yaml.")
                 raise ValueError("The config file must end in .json, .yml or .yaml.")
 
+        try:
+            structure.validate(data)
+        except PolicyValidationError as e:
+            log.error("Configuration invalid: {}".format(config_file))
+            log.error("%s" % e)
+            errors.append(e)
+            continue
+
+        load_resources(structure.get_resource_types(data))
+        schm = schema.generate()
         errors += schema.validate(data, schm)
         conf_policy_names = {
             p.get('name', 'unknown') for p in data.get('policies', ())}
@@ -301,19 +314,8 @@ def report(options, policies):
 
 @policy_command
 def logs(options, policies):
-    if len(policies) != 1:
-        log.error("Log subcommand requires exactly one policy")
-        sys.exit(1)
-
-    policy = policies.pop()
-    # initialize policy execution context for access to outputs
-    policy.ctx.initialize()
-
-    for e in policy.get_logs(options.start, options.end):
-        print("%s: %s" % (
-            time.strftime(
-                "%Y-%m-%d %H:%M:%S", time.localtime(e['timestamp'] / 1000)),
-            e['message']))
+    log.warning("logs command has been removed")
+    sys.exit(1)
 
 
 def _schema_get_docstring(starting_class):
@@ -334,7 +336,7 @@ def schema_completer(prefix):
     filtering via startswith happens after this list is returned.
     """
     from c7n import schema
-    load_resources()
+    load_available()
     components = prefix.split('.')
 
     if components[0] in provider.clouds.keys():
@@ -380,7 +382,7 @@ def schema_cmd(options):
         schema.json_dump(options.resource)
         return
 
-    load_resources()
+    load_available()
 
     resource_mapping = schema.resource_vocabulary()
     if options.summary:
@@ -546,14 +548,8 @@ def _metrics_get_endpoints(options):
 
 @policy_command
 def metrics_cmd(options, policies):
-    log.warning("metrics command is deprecated, and will be removed in future")
-    policies = [p for p in policies if p.provider_name == 'aws']
-    start, end = _metrics_get_endpoints(options)
-    data = {}
-    for p in policies:
-        log.info('Getting %s metrics', p)
-        data[p.name] = p.get_metrics(start, end, options.period)
-    print(dumps(data, indent=2))
+    log.warning("metrics command has been removed")
+    sys.exit(1)
 
 
 def version_cmd(options):

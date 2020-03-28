@@ -22,8 +22,7 @@ from c7n.filters.kms import KmsRelatedFilter
 from c7n import query
 from c7n.manager import resources
 from c7n.tags import (
-    TagDelayedAction, RemoveTag, TagActionFilter, Tag, universal_augment,
-    register_universal_tags)
+    TagDelayedAction, RemoveTag, TagActionFilter, Tag, universal_augment)
 from c7n.utils import (
     local_session, chunks, type_schema, snapshot_identifier)
 from c7n.filters.vpc import SecurityGroupFilter, SubnetFilter
@@ -42,8 +41,7 @@ class Table(query.QueryResourceManager):
         date = 'CreationDateTime'
         dimension = 'TableName'
         config_type = 'AWS::DynamoDB::Table'
-
-    permissions = ('dynamodb:ListTagsOfResource',)
+        universal_taggable = object()
 
     def get_source(self, source_type):
         if source_type == 'describe':
@@ -51,9 +49,6 @@ class Table(query.QueryResourceManager):
         elif source_type == 'config':
             return ConfigTable(self)
         raise ValueError('invalid source %s' % source_type)
-
-
-register_universal_tags(Table.filter_registry, Table.action_registry, False)
 
 
 class ConfigTable(query.ConfigSource):
@@ -357,6 +352,7 @@ class Stream(query.QueryResourceManager):
 
     class resource_type(query.TypeInfo):
         service = 'dynamodbstreams'
+        permission_prefix = 'dynamodb'
         # Note max rate of 5 calls per second
         enum_spec = ('list_streams', 'Streams', None)
         # Note max rate of 10 calls per second.

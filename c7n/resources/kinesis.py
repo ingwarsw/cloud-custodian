@@ -50,7 +50,9 @@ class Encrypt(Action):
                          key={'type': 'string'},
                          required=('key',))
 
-    permissions = ("kinesis:UpdateStream",)
+    # not see any documentation on what permission is actually neeeded.
+    # https://docs.aws.amazon.com/IAM/latest/UserGuide/list_amazonkinesis.html
+    permissions = ("kinesis:UpdateShardCount",)
 
     def process(self, resources):
         # get KeyId
@@ -101,6 +103,11 @@ class DeliveryStream(QueryResourceManager):
         name = id = 'DeliveryStreamName'
         date = 'CreateTimestamp'
         dimension = 'DeliveryStreamName'
+        universal_taggable = object()
+
+    def augment(self, resources):
+        return universal_augment(
+            self, super(DeliveryStream, self).augment(resources))
 
 
 @DeliveryStream.action_registry.register('delete')
@@ -218,6 +225,12 @@ class AnalyticsApp(QueryResourceManager):
                        'ApplicationName', 'ApplicationDetail')
         name = "ApplicationName"
         arn = id = "ApplicationARN"
+        arn_type = 'application'
+        universal_taggable = object()
+
+    def augment(self, resources):
+        return universal_augment(
+            self, super(AnalyticsApp, self).augment(resources))
 
 
 @AnalyticsApp.action_registry.register('delete')

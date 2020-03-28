@@ -29,7 +29,6 @@ from c7n.exceptions import PolicyValidationError
 from c7n.utils import (
     type_schema, local_session, snapshot_identifier, chunks)
 
-
 log = logging.getLogger('custodian.rds-cluster')
 
 
@@ -42,10 +41,13 @@ class RDSCluster(QueryResourceManager):
 
         service = 'rds'
         arn = 'DBClusterArn'
+        arn_type = 'cluster'
+        arn_separator = ":"
         enum_spec = ('describe_db_clusters', 'DBClusters', None)
         name = id = 'DBClusterIdentifier'
         dimension = 'DBClusterIdentifier'
         universal_taggable = True
+        permissions_enum = ('rds:DescribeDBClusters',)
 
     augment = tags.universal_augment
 
@@ -344,12 +346,15 @@ class RDSClusterSnapshot(QueryResourceManager):
     class resource_type(TypeInfo):
 
         service = 'rds'
+        arn_type = 'cluster-snapshot'
+        arn_separator = ':'
         arn = 'DBClusterSnapshotArn'
         enum_spec = (
             'describe_db_cluster_snapshots', 'DBClusterSnapshots', None)
         name = id = 'DBClusterSnapshotIdentifier'
         date = 'SnapshotCreateTime'
         universal_tagging = object()
+        permissions_enum = ('rds:DescribeDBClusterSnapshots',)
 
     augment = tags.universal_augment
 

@@ -77,6 +77,8 @@ class ArnResolverTest(BaseTest):
 
     def test_arn_resolver(self):
         for value, expected in self.table:
+            # load the resource types to enable resolution.
+            aws.AWS.get_resource_types(("aws.%s" % expected,))
             arn = aws.Arn.parse(value)
             result = aws.ArnResolver.resolve_type(arn)
             self.assertEqual(result, expected)
@@ -198,37 +200,52 @@ class OutputMetricsTest(BaseTest):
 
 
 class OutputLogsTest(BaseTest):
+    # cloud watch logging
 
-    def test_log_handler(self):
-        session_factory = self.replay_flight_data(
-            'test_log_handler')
-        conf = Bag({
-            'region': 'us-east-2',
-            'scheme': 'aws',
-            'netloc': 'master',
-            'path': 'custodian'
-        })
+    def test_default_log_group(self):
+        ctx = Bag(session_factory=None,
+                  options=Bag(account_id='001100', region='us-east-1'),
+                  policy=Bag(name='test', resource_type='ec2'))
+
+        log_output = output.log_outputs.select('custodian/xyz', ctx)
+        self.assertEqual(log_output.log_group, 'custodian/xyz')
+        self.assertEqual(log_output.construct_stream_name(), 'test')
+
+        log_output = output.log_outputs.select('/custodian/xyz/', ctx)
+        self.assertEqual(log_output.log_group, 'custodian/xyz')
+
+        log_output = output.log_outputs.select('aws://somewhere/out/there', ctx)
+        self.assertEqual(log_output.log_group, 'somewhere/out/there')
+
+        log_output = output.log_outputs.select('aws:///somewhere/out', ctx)
+        self.assertEqual(log_output.log_group, 'somewhere/out')
+
+        log_output = output.log_outputs.select('aws://somewhere', ctx)
+        self.assertEqual(log_output.log_group, 'somewhere')
+
+        log_output = output.log_outputs.select(
+            "aws:///somewhere/out?stream={region}/{policy}", ctx)
+        self.assertEqual(log_output.log_group, 'somewhere/out')
+        self.assertEqual(log_output.construct_stream_name(), 'us-east-1/test')
+
+    def test_master_log_handler(self):
+        session_factory = self.replay_flight_data('test_log_handler')
         ctx = Bag(session_factory=session_factory,
-            options=Bag(account_id='001100', region='us-east-1'),
-            policy=Bag(name='test', resource_type='ec2'))
-        output = aws.CloudWatchLogOutput(ctx, conf)
-        stream = output.get_handler()
+                  options=Bag(account_id='001100', region='us-east-1'),
+                  policy=Bag(name='test', resource_type='ec2'))
+        log_output = output.log_outputs.select(
+            'aws://master/custodian?region=us-east-2', ctx)
+        stream = log_output.get_handler()
         self.assertTrue(stream.log_group == 'custodian')
         self.assertTrue(stream.log_stream == '001100/us-east-1/test')
 
     def test_stream_override(self):
         session_factory = self.replay_flight_data(
             'test_log_stream_override')
-        conf = Bag({
-            'region': 'us-east-2',
-            'scheme': 'aws',
-            'netloc': 'master',
-            'path': 'custodian',
-            'stream': "testing"
-        })
         ctx = Bag(session_factory=session_factory,
             options=Bag(account_id='001100', region='us-east-1'),
             policy=Bag(name='test', resource_type='ec2'))
-        output = aws.CloudWatchLogOutput(ctx, conf)
-        stream = output.get_handler()
+        log_output = output.log_outputs.select(
+            'aws://master/custodian?region=us-east-2&stream=testing', ctx)
+        stream = log_output.get_handler()
         self.assertTrue(stream.log_stream == 'testing')

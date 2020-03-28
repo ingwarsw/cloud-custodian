@@ -22,7 +22,6 @@ from c7n.filters import FilterRegistry, ValueFilter
 from c7n.filters.iamaccess import CrossAccountAccessFilter
 from c7n.manager import resources, ResourceManager
 from c7n import query, utils
-from c7n.tags import register_universal_tags
 from c7n.utils import generate_arn, type_schema
 
 
@@ -38,7 +37,7 @@ class RestAccount(ResourceManager):
     filter_registry = FilterRegistry('rest-account.filters')
     action_registry = ActionRegistry('rest-account.actions')
 
-    class resource_type(object):
+    class resource_type(query.TypeInfo):
         service = 'apigateway'
         name = id = 'account_id'
         dimension = None
@@ -46,6 +45,9 @@ class RestAccount(ResourceManager):
 
     @classmethod
     def get_permissions(cls):
+        # this resource is not query manager based as its a pseudo
+        # resource. in that it always exists, it represents the
+        # service's account settings.
         return ('apigateway:GET',)
 
     @classmethod
@@ -131,6 +133,8 @@ class RestApi(query.QueryResourceManager):
         date = 'createdDate'
         dimension = 'GatewayName'
         config_type = "AWS::ApiGateway::RestApi"
+        universal_taggable = object()
+        permissions_enum = ('apigateway:GET',)
 
     @property
     def generate_arn(self):
@@ -146,6 +150,23 @@ class RestApi(query.QueryResourceManager):
                 region=self.config.region,
                 resource_type=self.resource_type.arn_type)
         return self._generate_arn
+
+    def get_source(self, source_type):
+        if source_type == 'describe':
+            return ApiDescribeSource(self)
+        return super(RestApi, self).get_source(source_type)
+
+
+class ApiDescribeSource(query.DescribeSource):
+
+    def augment(self, resources):
+        for r in resources:
+            tags = r.setdefault('Tags', [])
+            for k, v in r.pop('tags', {}).items():
+                tags.append({
+                    'Key': k,
+                    'Value': v})
+        return resources
 
 
 @RestApi.filter_registry.register('cross-account')
@@ -195,9 +216,6 @@ class UpdateApi(BaseAction):
                 patchOperations=self.data['patch'])
 
 
-register_universal_tags(RestApi.filter_registry, RestApi.action_registry, compatibility=False)
-
-
 @RestApi.action_registry.register('delete')
 class DeleteApi(BaseAction):
     """Delete a REST API.
@@ -216,7 +234,7 @@ class DeleteApi(BaseAction):
            actions:
              - type: delete
     """
-    permissions = ('apigateway:Delete',)
+    permissions = ('apigateway:DELETE',)
     schema = type_schema('delete')
 
     def process(self, resources):
@@ -242,11 +260,28 @@ class RestStage(query.ChildResourceManager):
         date = 'createdDate'
         universal_taggable = True
         config_type = "AWS::ApiGateway::Stage"
+        arn_type = 'stages'
+        permissions_enum = ('apigateway:GET',)
 
     def get_source(self, source_type):
         if source_type == 'describe-rest-stage':
             return DescribeRestStage(self)
         return super(RestStage, self).get_source(source_type)
+
+    @property
+    def generate_arn(self):
+        self._generate_arn = functools.partial(
+            generate_arn,
+            self.resource_type.service,
+            region=self.config.region)
+        return self._generate_arn
+
+    def get_arns(self, resources):
+        arns = []
+        for r in resources:
+            arns.append(self.generate_arn('/restapis/' + r['restApiId'] +
+             '/stages/' + r[self.get_model().id]))
+        return arns
 
 
 @query.sources.register('describe-rest-stage')
@@ -325,7 +360,7 @@ class DeleteStage(BaseAction):
             actions:
               - type: delete
     """
-    permissions = ('apigateway:Delete',)
+    permissions = ('apigateway:DELETE',)
     schema = utils.type_schema('delete')
 
     def process(self, resources):
@@ -351,6 +386,7 @@ class RestResource(query.ChildResourceManager):
         enum_spec = ('get_resources', 'items', None)
         id = 'id'
         name = 'path'
+        permissions_enum = ('apigateway:GET',)
 
 
 @query.sources.register('describe-rest-resource')
@@ -378,6 +414,7 @@ class RestApiVpcLink(query.QueryResourceManager):
         enum_spec = ('get_vpc_links', 'items', None)
         id = 'id'
         name = 'name'
+        permissions_enum = ('apigateway:GET',)
 
 
 @RestResource.filter_registry.register('rest-integration')
@@ -540,7 +577,7 @@ class DeleteRestIntegration(BaseAction):
             actions:
               - type: delete-integration
     """
-    permissions = ('apigateway:Delete',)
+    permissions = ('apigateway:DELETE',)
     schema = utils.type_schema('delete-integration')
 
     def process(self, resources):

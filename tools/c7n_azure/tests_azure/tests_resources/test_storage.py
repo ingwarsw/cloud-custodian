@@ -13,8 +13,8 @@
 # limitations under the License.
 from __future__ import absolute_import, division, print_function, unicode_literals
 
+import pytest
 from azure.mgmt.storage.models import StorageAccountUpdateParameters
-from ..azure_common import BaseTest, arm_template, cassette_name
 from c7n_azure.constants import BLOB_TYPE, FILE_TYPE, QUEUE_TYPE, TABLE_TYPE
 from c7n_azure.resources.storage import StorageSettingsUtilities, StorageFirewallRulesFilter, \
     StorageFirewallBypassFilter
@@ -26,6 +26,7 @@ from parameterized import parameterized
 
 from c7n.utils import get_annotation_prefix
 from c7n.utils import local_session
+from ..azure_common import BaseTest, arm_template, cassette_name
 
 
 class StorageTest(BaseTest):
@@ -361,6 +362,9 @@ class StorageTest(BaseTest):
         }, validate=True)
 
         resources = p.run()
+
+        self.sleep_in_live_mode(30)
+
         session = local_session(p.session_factory)
         token = StorageUtilities.get_storage_token(session)
         blob_settings = StorageSettingsUtilities.get_settings(
@@ -410,6 +414,9 @@ class StorageTest(BaseTest):
         }, validate=True)
 
         resources = p.run()
+
+        self.sleep_in_live_mode(30)
+
         session = local_session(p.session_factory)
         token = StorageUtilities.get_storage_token(session)
         blob_settings = StorageSettingsUtilities.get_settings(
@@ -430,6 +437,7 @@ class StorageTest(BaseTest):
         self.assertTrue(table_settings.logging.delete)
 
     @arm_template('storage.json')
+    @pytest.mark.skiplive
     def test_disable_retention_log_settings(self):
         p = self.load_policy({
             'name': 'test-azure-storage',

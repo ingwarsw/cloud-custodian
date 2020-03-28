@@ -22,6 +22,7 @@ from c7n.exceptions import PolicyValidationError
 from c7n.filters import Filter
 from c7n.query import QueryResourceManager, TypeInfo
 from c7n.manager import resources
+from c7n.tags import universal_augment
 from c7n.utils import chunks, get_retry, local_session, type_schema, filter_empty
 from c7n.version import version
 
@@ -43,6 +44,8 @@ class SSMParameter(QueryResourceManager):
     retry = staticmethod(get_retry(('Throttled',)))
     permissions = ('ssm:GetParameters',
                    'ssm:DescribeParameters')
+
+    augment = universal_augment
 
 
 @resources.register('ssm-managed-instance')
@@ -347,13 +350,12 @@ class OpsItemFilter(Filter):
         return {'OpsItemFilters': q}
 
     @classmethod
-    def register(cls, registry, _):
-        for resource in registry.keys():
-            klass = registry.get(resource)
-            klass.filter_registry.register('ops-item', cls)
+    def register_resource(cls, registry, resource_class):
+        if 'ops-item' not in resource_class.filter_registry:
+            resource_class.filter_registry.register('ops-item', cls)
 
 
-resources.subscribe(resources.EVENT_FINAL, OpsItemFilter.register)
+resources.subscribe(OpsItemFilter.register_resource)
 
 
 class PostItem(Action):
@@ -543,7 +545,8 @@ class PostItem(Action):
             self.manager.type,
             self.manager.config.region,
             self.manager.config.account_id)).encode('utf8')
-        dedup = hashlib.md5(dedup).hexdigest()
+        # size restrictions on this value is 4-20, digest is 32
+        dedup = hashlib.md5(dedup).hexdigest()[:20]
 
         i = dict(
             Title=title,
@@ -586,10 +589,9 @@ class PostItem(Action):
         return filter_empty(i)
 
     @classmethod
-    def register(cls, registry, _):
-        for resource in registry.keys():
-            klass = registry.get(resource)
-            klass.action_registry.register('post-item', cls)
+    def register_resource(cls, registry, resource_class):
+        if 'post-item' not in resource_class.action_registry:
+            resource_class.action_registry.register('post-item', cls)
 
 
-resources.subscribe(resources.EVENT_FINAL, PostItem.register)
+resources.subscribe(PostItem.register_resource)

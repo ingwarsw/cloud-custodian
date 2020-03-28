@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from c7n.provider import clouds
+from c7n.provider import clouds, Provider
 
 from collections import Counter, namedtuple
 import contextlib
@@ -36,6 +36,8 @@ from c7n.credentials import SessionFactory
 from c7n.config import Bag
 from c7n.exceptions import PolicyValidationError
 from c7n.log import CloudWatchLogHandler
+
+from .resource_map import ResourceMap
 
 # Import output registries aws provider extends.
 from c7n.output import (
@@ -138,6 +140,16 @@ class Arn(namedtuple('_Arn', (
 
     __slots__ = ()
 
+    def __repr__(self):
+        return "<arn:%s:%s:%s:%s:%s%s%s>" % (
+            self.partition,
+            self.service,
+            self.region,
+            self.account_id,
+            self.resource_type,
+            self.separator,
+            self.resource)
+
     @classmethod
     def parse(cls, arn):
         parts = arn.split(':', 5)
@@ -231,11 +243,13 @@ class CloudWatchLogOutput(LogOutput):
 
     def __init__(self, ctx, config=None):
         super(CloudWatchLogOutput, self).__init__(ctx, config)
-        if self.config.get('netloc') == 'master':
-            self.log_group = self.config.get('path').strip("/")
+        if self.config['netloc'] == 'master' or not self.config['netloc']:
+            self.log_group = self.config['path'].strip('/')
         else:
-            self.log_group = self.config.get('netloc')
-        self.region = self.config.get('region')
+            # join netloc to path for casual usages of aws://log/group/name
+            self.log_group = ("%s/%s" % (
+                self.config['netloc'], self.config['path'].strip('/'))).strip('/')
+        self.region = self.config.get('region', ctx.options.region)
         self.destination = (
             self.config.scheme == 'aws' and
             self.config.get('netloc') == 'master') and 'master' or None
@@ -251,27 +265,18 @@ class CloudWatchLogOutput(LogOutput):
             log_stream = self.config.get('stream').format(
                 region=self.ctx.options.region,
                 account=self.ctx.options.account_id,
-                policy=self.ctx.policy.name
-            )
+                policy=self.ctx.policy.name,
+                now=datetime.datetime.utcnow())
         return log_stream
 
     def get_handler(self):
         log_stream = self.construct_stream_name()
-        if self.destination == 'master':
-            handler = CloudWatchLogHandler(
-                log_group=self.log_group,
-                log_stream=log_stream,
-                session_factory=lambda x=None: self.ctx.session_factory(
-                    assume=False,
-                    region=self.region
-                )
-            )
-        else:
-            handler = CloudWatchLogHandler(
-                log_group=self.log_group,
-                log_stream=log_stream,
-                session_factory=lambda x=None: self.ctx.session_factory(region=self.region))
-        return handler
+        params = dict(
+            log_group=self.log_group, log_stream=log_stream,
+            session_factory=(
+                lambda x=None: self.ctx.session_factory(
+                    region=self.region, assume=self.destination != 'master')))
+        return CloudWatchLogHandler(**params)
 
     def __repr__(self):
         return "<%s to group:%s stream:%s>" % (
@@ -497,12 +502,14 @@ class S3Output(DirectoryOutput):
 
 
 @clouds.register('aws')
-class AWS(object):
+class AWS(Provider):
 
     display_name = 'AWS'
     resource_prefix = 'aws'
     # legacy path for older plugins
     resources = PluginRegistry('resources')
+    # import paths for resources
+    resource_map = ResourceMap
 
     def initialize(self, options):
         """
@@ -577,8 +584,7 @@ class AWS(object):
 
                 if len(options.regions) > 1 or 'all' in options.regions and getattr(
                         options, 'output_dir', None):
-                    options_copy.output_dir = (
-                        options.output_dir.rstrip('/') + '/%s' % region)
+                    options_copy.output_dir = join_output(options.output_dir, region)
                 policies.append(
                     Policy(p.data, options_copy,
                            session_factory=policy_collection.session_factory()))
@@ -589,6 +595,12 @@ class AWS(object):
             # is stable.
             sorted(policies, key=operator.attrgetter('options.region')),
             options)
+
+
+def join_output(output_dir, suffix):
+    if output_dir.endswith('://'):
+        return output_dir + suffix
+    return output_dir.rstrip('/') + '/%s' % suffix
 
 
 def fake_session():

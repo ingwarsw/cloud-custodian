@@ -38,6 +38,7 @@ def get_jinja_env(template_folders):
     env.filters['yaml_safe'] = functools.partial(yaml.safe_dump, default_flow_style=False)
     env.filters['date_time_format'] = date_time_format
     env.filters['get_date_time_delta'] = get_date_time_delta
+    env.filters['from_json'] = json.loads
     env.filters['get_date_age'] = get_date_age
     env.globals['format_resource'] = resource_format
     env.globals['format_struct'] = format_struct
@@ -90,7 +91,10 @@ def get_rendered_jinja(
 def get_resource_tag_targets(resource, target_tag_keys):
     if 'Tags' not in resource:
         return []
-    tags = {tag['Key']: tag['Value'] for tag in resource['Tags']}
+    if isinstance(resource['Tags'], dict):
+        tags = resource['Tags']
+    else:
+        tags = {tag['Key']: tag['Value'] for tag in resource['Tags']}
     targets = []
     for target_tag_key in target_tag_keys:
         if target_tag_key in tags:
@@ -154,9 +158,15 @@ def get_resource_tag_value(resource, k):
     return ''
 
 
+def strip_prefix(value, prefix):
+    if value.startswith(prefix):
+        return value[len(prefix):]
+    return value
+
+
 def resource_format(resource, resource_type):
     if resource_type.startswith('aws.'):
-        resource_type = resource_type.lstrip('aws.')
+        resource_type = strip_prefix(resource_type, 'aws.')
     if resource_type == 'ec2':
         tag_map = {t['Key']: t['Value'] for t in resource.get('Tags', ())}
         return "%s %s %s %s %s %s" % (
@@ -272,9 +282,8 @@ def resource_format(resource, resource_type):
             resource['account_id'],
             resource['account_name'])
     elif resource_type == 'cloudtrail':
-        return " %s %s" % (
-            resource['account_id'],
-            resource['account_name'])
+        return "%s" % (
+            resource['Name'])
     elif resource_type == 'vpc':
         return "%s " % (
             resource['VpcId'])

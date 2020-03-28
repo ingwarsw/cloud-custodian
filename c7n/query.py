@@ -237,11 +237,18 @@ class DescribeSource(object):
 
     def get_permissions(self):
         m = self.manager.get_model()
-        perms = ['%s:%s' % (m.service, _napi(m.enum_spec[0]))]
-        if getattr(m, 'detail_spec', None):
-            perms.append("%s:%s" % (m.service, _napi(m.detail_spec[0])))
-        if getattr(m, 'batch_detail_spec', None):
-            perms.append("%s:%s" % (m.service, _napi(m.batch_detail_spec[0])))
+        prefix = m.permission_prefix or m.service
+        if m.permissions_enum:
+            perms = list(m.permissions_enum)
+        else:
+            perms = ['%s:%s' % (prefix, _napi(m.enum_spec[0]))]
+        if m.permissions_augment:
+            perms.extend(m.permissions_augment)
+        else:
+            if getattr(m, 'detail_spec', None):
+                perms.append("%s:%s" % (prefix, _napi(m.detail_spec[0])))
+            if getattr(m, 'batch_detail_spec', None):
+                perms.append("%s:%s" % (prefix, _napi(m.batch_detail_spec[0])))
         return perms
 
     def augment(self, resources):
@@ -716,13 +723,26 @@ class TypeInfo(object):
     ###########
     # Optional
 
+    ############
+    # Permissions
+
+    # Permission string prefix if not service
+    permission_prefix = None
+
+    # Permissions for resource enumeration/get. Normally we autogen
+    # but in some cases we need to specify statically
+    permissions_enum = None
+
+    # Permissions for resourcee augment
+    permissions_augment = None
+
     ###########
     # Arn handling / generation metadata
 
     # arn resource attribute, when describe format has arn
     arn = None
 
-    # type, used for arn construction
+    # type, used for arn construction, also required for universal tag augment
     arn_type = None
 
     # how arn type is separated from rest of arn
