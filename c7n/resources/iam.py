@@ -60,13 +60,21 @@ class Group(QueryResourceManager):
         global_resource = True
         arn = 'Arn'
 
+    def get_source(self, source_type):
+        if source_type == 'describe':
+            return DescribeGroup(self)
+        return super(Group, self).get_source(source_type)
+
+
+class DescribeGroup(DescribeSource):
+
     def get_resources(self, resource_ids, cache=True):
         """For IAM Groups on events, resource ids are Group Names."""
-        client = local_session(self.session_factory).client('iam')
+        client = local_session(self.manager.session_factory).client('iam')
         resources = []
         for rid in resource_ids:
             try:
-                result = client.get_group(GroupName=rid)
+                result = self.manager.retry(client.get_group, GroupName=rid)
             except client.exceptions.NoSuchEntityException:
                 continue
             group = result.pop('Group')
@@ -89,6 +97,25 @@ class Role(QueryResourceManager):
         # Denotes this resource type exists across regions
         global_resource = True
         arn = 'Arn'
+
+    def get_source(self, source_type):
+        if source_type == 'describe':
+            return DescribeRole(self)
+        return super(Role, self).get_source(source_type)
+
+
+class DescribeRole(DescribeSource):
+
+    def get_resources(self, resource_ids, cache=True):
+        client = local_session(self.manager.session_factory).client('iam')
+        resources = []
+        for rid in resource_ids:
+            try:
+                result = self.manager.retry(client.get_role, RoleName=rid)
+            except client.exceptions.NoSuchEntityException:
+                continue
+            resources.append(result.pop('Role'))
+        return resources
 
 
 @Role.action_registry.register('tag')
@@ -351,7 +378,7 @@ class ServiceUsage(Filter):
 
     .. code-block:: yaml
 
-      - name: unused-users
+      - name: usage-unused-users
         resource: iam-user
         filters:
           - type: usage
@@ -439,7 +466,7 @@ class ServiceUsage(Filter):
                 saf_matches = saf.process(saf_results)
                 if match_operator == 'all' and len(saf_matches) == len(saf_results):
                     results.append(r)
-                elif saf_matches:
+                elif match_operator != 'all' and saf_matches:
                     results.append(r)
 
             time.sleep(self.data.get('poll-delay', 2))
@@ -1186,7 +1213,7 @@ class CredentialReport(Filter):
            key: password_last_used
            value: absent
          - type: credential
-           key: access_keys.last_used
+           key: access_keys.last_used_date
            value_type: age
            value: 30
            op: less-than
@@ -1495,6 +1522,11 @@ class GroupMembership(ValueFilter):
 class UserAccessKey(ValueFilter):
     """Filter IAM users based on access-key values
 
+    By default multiple uses of this filter will match
+    on any user key satisfying either filter. To find
+    specific keys that match multiple access-key filters,
+    use `match-operator: and`
+
     :example:
 
     .. code-block:: yaml
@@ -1506,9 +1538,17 @@ class UserAccessKey(ValueFilter):
               - type: access-key
                 key: Status
                 value: Active
+              - type: access-key
+                match-operator: and
+                key: CreateDate
+                value_type: age
+                value: 90
     """
 
-    schema = type_schema('access-key', rinherit=ValueFilter.schema)
+    schema = type_schema(
+        'access-key',
+        rinherit=ValueFilter.schema,
+        **{'match-operator': {'enum': ['and', 'or']}})
     schema_alias = False
     permissions = ('iam:ListAccessKeys',)
     annotation_key = 'c7n:AccessKeys'
@@ -1532,13 +1572,17 @@ class UserAccessKey(ValueFilter):
                 chunks(augment_set, 50)))
 
         matched = []
+        match_op = self.data.get('match-operator', 'or')
         for r in resources:
+            keys = r[self.annotation_key]
+            if self.matched_annotation_key in r and match_op == 'and':
+                keys = r[self.matched_annotation_key]
             k_matched = []
-            for k in r[self.annotation_key]:
+            for k in keys:
                 if self.match(k):
                     k_matched.append(k)
             for k in k_matched:
-                k['c7n:matched-type'] = 'access'
+                k['c7n:match-type'] = 'access'
             self.merge_annotation(r, self.matched_annotation_key, k_matched)
             if k_matched:
                 matched.append(r)
@@ -1565,7 +1609,7 @@ class UserMfaDevice(ValueFilter):
 
     schema = type_schema('mfa-device', rinherit=ValueFilter.schema)
     schema_alias = False
-    permissions = ('iam:ListMfaDevices',)
+    permissions = ('iam:ListMFADevices',)
 
     def __init__(self, *args, **kw):
         super(UserMfaDevice, self).__init__(*args, **kw)
@@ -1634,7 +1678,7 @@ class UserDelete(BaseAction):
       .. code-block:: yaml
 
         # using a 'credential' filter'
-        - name: iam-only-whitelisted-users
+        - name: iam-only-whitelisted-users-credential
           resource: iam-user
           filters:
             - type: credential
@@ -1647,7 +1691,7 @@ class UserDelete(BaseAction):
             - delete
 
         # using a 'username' filter with 'UserName'
-        - name: iam-only-whitelisted-users
+        - name: iam-only-whitelisted-users-username
           resource: iam-user
           filters:
             - type: value
@@ -1660,7 +1704,7 @@ class UserDelete(BaseAction):
             - delete
 
          # using a 'username' filter with 'Arn'
-        - name: iam-only-whitelisted-users
+        - name: iam-only-whitelisted-users-arn
           resource: iam-user
           filters:
             - type: value
@@ -1691,15 +1735,15 @@ class UserDelete(BaseAction):
                 the username is included in whitelist
               resource: iam-user
               filters:
-                - type: username
+                - type: value
                   key: UserName
                   op: not-in
                   value:
                     - valid-user-1
                     - valid-user-2
                 - type: credential
-                  key: Status
-                  value: Active
+                  key: password_enabled
+                  value: true
               actions:
                 - type: delete
                   options:

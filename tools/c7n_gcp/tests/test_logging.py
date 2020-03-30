@@ -12,6 +12,8 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+from googleapiclient.errors import HttpError
+
 from gcp_common import BaseTest, event_data
 
 
@@ -44,6 +46,27 @@ class LogProjectSinkTest(BaseTest):
         event = event_data('log-create-project-sink.json')
         resource = exec_mode.run(event, None)
         self.assertEqual(resource[0]['name'], sink_name)
+
+    def test_delete_project_sink(self):
+        project_id = 'custodian-tests'
+        resource_name = "test-sink"
+        factory = self.replay_flight_data(
+            'log-project-sink-delete', project_id)
+        policy = self.load_policy({'name': 'log-project-sink-delete',
+                                   'resource': 'gcp.log-project-sink',
+                                   'filters': [{'name': resource_name}],
+                                   'actions': ['delete']},
+                                  session_factory=factory)
+        resources = policy.run()
+        self.assertEqual(resources[0]['name'], resource_name)
+
+        client = policy.resource_manager.get_client()
+        sinkName = 'projects/{project_id}/sinks/{name}'.format(
+            project_id=project_id,
+            name=resource_name)
+
+        with self.assertRaises(HttpError):
+            client.execute_query('get', {'sinkName': sinkName})
 
 
 class LogProjectMetricTest(BaseTest):

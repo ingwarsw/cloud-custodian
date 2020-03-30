@@ -485,6 +485,9 @@ class InstanceOffHour(OffHour, StateTransitionFilter):
     with the format YYYY-MM-DD. Alternatively, the list (using the same syntax)
     can be taken from a specified url.
 
+    Note: You can disable filtering of only running instances by setting
+    `state-filter: false`
+
     :Example:
 
     .. code-block:: yaml
@@ -526,11 +529,19 @@ class InstanceOffHour(OffHour, StateTransitionFilter):
               - stop
     """
 
+    schema = type_schema(
+        'offhour', rinherit=OffHour.schema,
+        **{'state-filter': {'type': 'boolean'}})
+    schema_alias = False
+
     valid_origin_states = ('running',)
 
     def process(self, resources, event=None):
-        return super(InstanceOffHour, self).process(
-            self.filter_instance_state(resources))
+        if self.data.get('state-filter', True):
+            return super(InstanceOffHour, self).process(
+                self.filter_instance_state(resources))
+        else:
+            return super(InstanceOffHour, self).process(resources)
 
 
 @filters.register('network-location')
@@ -554,6 +565,9 @@ class InstanceOnHour(OnHour, StateTransitionFilter):
     the day. A list of days to excluded can be included as a list of strings
     with the format YYYY-MM-DD. Alternatively, the list (using the same syntax)
     can be taken from a specified url.
+
+    Note: You can disable filtering of only stopped instances by setting
+    `state-filter: false`
 
     :Example:
 
@@ -596,11 +610,19 @@ class InstanceOnHour(OnHour, StateTransitionFilter):
               - start
     """
 
+    schema = type_schema(
+        'onhour', rinherit=OnHour.schema,
+        **{'state-filter': {'type': 'boolean'}})
+    schema_alias = False
+
     valid_origin_states = ('stopped',)
 
     def process(self, resources, event=None):
-        return super(InstanceOnHour, self).process(
-            self.filter_instance_state(resources))
+        if self.data.get('state-filter', True):
+            return super(InstanceOnHour, self).process(
+                self.filter_instance_state(resources))
+        else:
+            return super(InstanceOnHour, self).process(resources)
 
 
 @filters.register('ephemeral')
@@ -898,6 +920,170 @@ class SsmStatus(ValueFilter):
             r[self.annotation] = info_map.get(r['InstanceId'], {})
 
 
+@EC2.filter_registry.register('ssm-compliance')
+class SsmCompliance(Filter):
+    """Filter ec2 instances by their ssm compliance status.
+
+    :Example:
+
+    Find non-compliant ec2 instances.
+
+    .. code-block:: yaml
+
+        policies:
+          - name: ec2-ssm-compliance
+            resource: ec2
+            filters:
+              - type: ssm-compliance
+                compliance_types:
+                  - Association
+                  - Patch
+                severity:
+                  - CRITICAL
+                  - HIGH
+                  - MEDIUM
+                  - LOW
+                  - UNSPECIFIED
+                states:
+                  - NON_COMPLIANT
+                eval_filters:
+                 - type: value
+                   key: ExecutionSummary.ExecutionTime
+                   value_type: age
+                   value: 30
+                   op: less-than
+    """
+    schema = type_schema(
+        'ssm-compliance',
+        **{'required': ['compliance_types'],
+           'compliance_types': {'type': 'array', 'items': {'type': 'string'}},
+           'severity': {'type': 'array', 'items': {'type': 'string'}},
+           'op': {'enum': ['or', 'and']},
+           'eval_filters': {'type': 'array', 'items': {
+                            'oneOf': [
+                                {'$ref': '#/definitions/filters/valuekv'},
+                                {'$ref': '#/definitions/filters/value'}]}},
+           'states': {'type': 'array',
+                      'default': ['NON_COMPLIANT'],
+                      'items': {
+                          'enum': [
+                              'COMPLIANT',
+                              'NON_COMPLIANT'
+                          ]}}})
+    permissions = ('ssm:ListResourceComplianceSummaries',)
+    annotation = 'c7n:ssm-compliance'
+
+    def process(self, resources, event=None):
+        op = self.data.get('op', 'or') == 'or' and any or all
+        eval_filters = []
+        for f in self.data.get('eval_filters', ()):
+            vf = ValueFilter(f)
+            vf.annotate = False
+            eval_filters.append(vf)
+
+        client = utils.local_session(self.manager.session_factory).client('ssm')
+        filters = [
+            {
+                'Key': 'Status',
+                'Values': self.data['states'],
+                'Type': 'EQUAL'
+            },
+            {
+                'Key': 'ComplianceType',
+                'Values': self.data['compliance_types'],
+                'Type': 'EQUAL'
+            }
+        ]
+        severity = self.data.get('severity')
+        if severity:
+            filters.append(
+                {
+                    'Key': 'OverallSeverity',
+                    'Values': severity,
+                    'Type': 'EQUAL'
+                })
+
+        resource_map = {}
+        pager = client.get_paginator('list_resource_compliance_summaries')
+        for page in pager.paginate(Filters=filters):
+            items = page['ResourceComplianceSummaryItems']
+            for i in items:
+                if not eval_filters:
+                    resource_map.setdefault(
+                        i['ResourceId'], []).append(i)
+                    continue
+                if op([f.match(i) for f in eval_filters]):
+                    resource_map.setdefault(
+                        i['ResourceId'], []).append(i)
+
+        results = []
+        for r in resources:
+            result = resource_map.get(r['InstanceId'])
+            if result:
+                r[self.annotation] = result
+                results.append(r)
+
+        return results
+
+
+@actions.register('set-monitoring')
+class MonitorInstances(BaseAction, StateTransitionFilter):
+    """Action on EC2 Instances to enable/disable detailed monitoring
+
+    The differents states of detailed monitoring status are :
+    'disabled'|'disabling'|'enabled'|'pending'
+    (https://boto3.amazonaws.com/v1/documentation/api/latest/reference/services/ec2.html#EC2.Client.describe_instances)
+
+    :Example:
+
+    .. code-block:: yaml
+
+        policies:
+          - name: ec2-detailed-monitoring-activation
+            resource: ec2
+            filters:
+              - Monitoring.State: disabled
+            actions:
+              - type: set-monitoring
+                state: enable
+
+    References
+
+     https://docs.aws.amazon.com/AWSEC2/latest/UserGuide/using-cloudwatch-new.html
+    """
+    schema = type_schema('set-monitoring',
+        **{'state': {'enum': ['enable', 'disable']}})
+    permissions = ('ec2:MonitorInstances', 'ec2:UnmonitorInstances')
+
+    def process(self, resources, event=None):
+        client = utils.local_session(
+            self.manager.session_factory).client('ec2')
+        actions = {
+            'enable': self.enable_monitoring,
+            'disable': self.disable_monitoring
+        }
+        for instances_set in utils.chunks(resources, 20):
+            actions[self.data.get('state')](client, instances_set)
+
+    def enable_monitoring(self, client, resources):
+        try:
+            client.monitor_instances(
+                InstanceIds=[inst['InstanceId'] for inst in resources]
+            )
+        except ClientError as e:
+            if e.response['Error']['Code'] != 'InvalidInstanceId.NotFound':
+                raise
+
+    def disable_monitoring(self, client, resources):
+        try:
+            client.unmonitor_instances(
+                InstanceIds=[inst['InstanceId'] for inst in resources]
+            )
+        except ClientError as e:
+            if e.response['Error']['Code'] != 'InvalidInstanceId.NotFound':
+                raise
+
+
 @EC2.action_registry.register("post-finding")
 class InstanceFinding(PostFinding):
     def format_resource(self, r):
@@ -994,7 +1180,7 @@ class Start(BaseAction, StateTransitionFilter):
     def process_instance_set(self, client, instances, itype, izone):
         # Setup retry with insufficient capacity as well
         retryable = ('InsufficientInstanceCapacity', 'RequestLimitExceeded',
-                     'Client.RequestLimitExceeded'),
+                     'Client.RequestLimitExceeded', 'Server.InsufficientInstanceCapacity'),
         retry = utils.get_retry(retryable, max_attempts=5)
         instance_ids = [i['InstanceId'] for i in instances]
         while instance_ids:
@@ -1105,7 +1291,7 @@ class Resize(BaseAction, StateTransitionFilter):
 
 @actions.register('stop')
 class Stop(BaseAction, StateTransitionFilter):
-    """Stops a running EC2 instances
+    """Stops or hibernates a running EC2 instances
 
     :Example:
 
@@ -1118,10 +1304,27 @@ class Stop(BaseAction, StateTransitionFilter):
               - instance-state-name: running
             actions:
               - stop
+
+          - name: ec2-hibernate-instances
+            resources: ec2
+            query:
+              - instance-state-name: running
+            actions:
+              - type: stop
+                hibernate: true
+
+
+    Note when using hiberate, instances not configured for hiberation
+    will just be stopped.
     """
     valid_origin_states = ('running',)
 
-    schema = type_schema('stop', **{'terminate-ephemeral': {'type': 'boolean'}})
+    schema = type_schema(
+        'stop',
+        **{'terminate-ephemeral': {'type': 'boolean'},
+           'hibernate': {'type': 'boolean'}})
+
+    has_hibernate = jmespath.compile('[].HibernationOptions.Configured')
 
     def get_permissions(self):
         perms = ('ec2:StopInstances',)
@@ -1139,6 +1342,15 @@ class Stop(BaseAction, StateTransitionFilter):
                 persistent.append(i)
         return ephemeral, persistent
 
+    def split_on_hibernate(self, instances):
+        enabled, disabled = [], []
+        for status, i in zip(self.has_hibernate.search(instances), instances):
+            if status is True:
+                enabled.append(i)
+            else:
+                disabled.append(i)
+        return enabled, disabled
+
     def process(self, instances):
         instances = self.filter_instance_state(instances)
         if not len(instances):
@@ -1152,15 +1364,22 @@ class Stop(BaseAction, StateTransitionFilter):
                 client.terminate_instances,
                 [i['InstanceId'] for i in ephemeral])
         if persistent:
+            if self.data.get('hibernate', False):
+                enabled, persistent = self.split_on_hibernate(persistent)
+                if enabled:
+                    self._run_instances_op(
+                        client.stop_instances,
+                        [i['InstanceId'] for i in enabled],
+                        Hibernate=True)
             self._run_instances_op(
                 client.stop_instances,
                 [i['InstanceId'] for i in persistent])
         return instances
 
-    def _run_instances_op(self, op, instance_ids):
+    def _run_instances_op(self, op, instance_ids, **kwargs):
         while instance_ids:
             try:
-                return self.manager.retry(op, InstanceIds=instance_ids)
+                return self.manager.retry(op, InstanceIds=instance_ids, **kwargs)
             except ClientError as e:
                 if e.response['Error']['Code'] == 'IncorrectInstanceState':
                     instance_ids.remove(extract_instance_id(e))
@@ -1443,10 +1662,7 @@ class AutorecoverAlarm(BaseAction, StateTransitionFilter):
     """
 
     schema = type_schema('autorecover-alarm')
-    permissions = ('ec2:DescribeInstanceStatus',
-                   'ec2:RecoverInstances',
-                   'ec2:DescribeInstanceRecoveryAttribute')
-
+    permissions = ('cloudwatch:PutMetricAlarm',)
     valid_origin_states = ('running', 'stopped', 'pending', 'stopping')
     filter_asg_membership = ValueFilter({
         'key': 'tag:aws:autoscaling:groupName',
@@ -1898,7 +2114,7 @@ class LaunchTemplate(query.QueryResourceManager):
                 continue
             templates.setdefault(
                 (t['LaunchTemplateId'],
-                 t['Version']), []).append(a['AutoScalingGroupName'])
+                 t.get('Version', None)), []).append(a['AutoScalingGroupName'])
         return templates
 
 

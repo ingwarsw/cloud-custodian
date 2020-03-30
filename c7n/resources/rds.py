@@ -109,6 +109,7 @@ class RDS(QueryResourceManager):
             'PubliclyAccessible',
             'InstanceCreateTime',
         )
+        permissions_enum = ('rds:DescribeDBInstances',)
 
     filter_registry = filters
     action_registry = actions
@@ -649,7 +650,7 @@ class CopySnapshotTags(BaseAction):
     schema = type_schema(
         'set-snapshot-copy-tags',
         enable={'type': 'boolean'})
-    permissions = ('rds:ModifyDBInstances',)
+    permissions = ('rds:ModifyDBInstance',)
 
     def process(self, resources):
         error = None
@@ -956,6 +957,7 @@ class RDSSnapshot(QueryResourceManager):
         config_type = "AWS::RDS::DBSnapshot"
         filter_name = "DBSnapshotIdentifier"
         universal_taggable = True
+        permissions_enum = ('rds:DescribeDBSnapshots',)
 
     def get_source(self, source_type):
         if source_type == 'describe':
@@ -1197,7 +1199,7 @@ class RegionCopySnapshot(BaseAction):
       - name: copy-encrypted-snapshots
         description: |
           copy snapshots under 1 day old to dr region with kms
-        resource: rdb-snapshot
+        resource: rds-snapshot
         region: us-east-1
         filters:
          - Status: available
@@ -1212,7 +1214,7 @@ class RegionCopySnapshot(BaseAction):
             target_key: arn:aws:kms:us-east-2:0000:key/cb291f53-c9cf61
             copy_tags: true
             tags:
-              - OriginRegion: us-east-1
+              OriginRegion: us-east-1
     """
 
     schema = type_schema(
@@ -1377,6 +1379,7 @@ class RDSSubnetGroup(QueryResourceManager):
             'describe_db_subnet_groups', 'DBSubnetGroups', None)
         filter_name = 'DBSubnetGroupName'
         filter_type = 'scalar'
+        permissions_enum = ('rds:DescribeDBSubnetGroups',)
 
     def augment(self, resources):
         _db_subnet_group_tags(
@@ -1659,3 +1662,4 @@ class ReservedRDS(QueryResourceManager):
         filter_type = 'list'
         arn_type = "reserved-db"
         arn = "ReservedDBInstanceArn"
+        permissions_enum = ('rds:DescribeReservedDBInstances',)

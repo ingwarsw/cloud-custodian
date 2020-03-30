@@ -110,7 +110,8 @@ class DetachDisks(MethodAction):
     `Detaches <https://cloud.google.com/compute/docs/reference/rest/v1/instances/detachDisk>`_
     all disks from instance. The action does not specify any parameters.
 
-    It may be useful to be used before deleting instances (to not delete disks that are set to auto delete)
+    It may be useful to be used before deleting instances to not delete disks
+    that are set to auto delete.
 
     :Example:
 
@@ -127,9 +128,10 @@ class DetachDisks(MethodAction):
               - type: detach-disks
     """
     schema = type_schema('detach-disks')
-    
+    attr_filter = ('status', ('TERMINATED',))
+
     def validate(self):
-        return self
+        pass
 
     def process_resource_set(self, client, model, resources):
         for resource in resources:
@@ -142,7 +144,7 @@ class DetachDisks(MethodAction):
         project, zone, instance = path_param_re.match(resource['selfLink']).groups()
 
         base_params = {'project': project, 'zone': zone, 'instance': instance}
-        for disk in resource['disks']:
+        for disk in resource.get('disks', []):
             params = dict(base_params, deviceName=disk['deviceName'])
             self.invoke_api(client, op_name, params)
 
