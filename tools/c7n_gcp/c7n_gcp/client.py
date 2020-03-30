@@ -60,7 +60,6 @@ NUM_HTTP_RETRIES = 5
 RETRYABLE_EXCEPTIONS = (
     http_client.ResponseNotReady,
     http_client.IncompleteRead,
-    http_client.TooManyRequests,
     httplib2.ServerNotFoundError,
     socket.error,
     ssl.SSLError,
