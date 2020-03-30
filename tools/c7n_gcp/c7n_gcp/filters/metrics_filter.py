@@ -89,7 +89,7 @@ class MetricsFilter(Filter):
     # DEFAULT_ALIGNMENT_PERIOD = 'PT1M'
     DEFAULT_ALIGNAER = 'mean'
     DEFAULT_AGGREGATION = 'mean'
-    
+
     scalar_ops = {
         'eq': operator.eq,
         'equal': operator.eq,
@@ -164,7 +164,7 @@ class MetricsFilter(Filter):
         self.threshold = self.data.get('threshold')
         # Number of hours from current UTC time
         self.timeframe = float(self.data.get('timeframe', self.DEFAULT_TIMEFRAME))
-        # Alignment Period as defined by 
+        # Alignment Period as defined by
         # https://cloud.google.com/monitoring/api/ref_v3/rest/v3/projects.alertPolicies#Aggregation
         # self.alignment_period = isodate.parse_duration(self.data.get('alignment_period', self.DEFAULT_ALIGNMENT_PERIOD))
         # Aligner
@@ -175,14 +175,14 @@ class MetricsFilter(Filter):
         self.filter = self.data.get('filter', '')
         # Include or exclude resources if there is no metric data available
         self.no_data_action = self.data.get('no_data_action', 'exclude')
-        
+
 
     def process(self, resources, event=None):
         # Project id
         self.project_id = local_session(self.manager.source.query.session_factory).get_default_project()
         # Create Stackdriver Monitor client
         self.client = local_session(self.manager.source.query.session_factory).client('monitoring', 'v3', 'projects.timeSeries')
-        
+
         # Process each resource in a separate thread, returning all that pass filter
         with self.executor_factory(max_workers=10) as w:
             processed = list(w.map(self.process_resource, resources))
@@ -203,18 +203,18 @@ class MetricsFilter(Filter):
                   'aggregation_perSeriesAligner': 'ALIGN_{}'.format(self.aligner.upper()),
                   'filter': self.get_filter(resource),
         }
-            
+
         # print("Params {}".format(params))
         metrics_data = self.client.execute_command('list', params)
         # print("result {}".format(metrics_data))
-        
+
         if not metrics_data or not len(metrics_data['timeSeries']) or not len(metrics_data['timeSeries'][0]['points']):
             value = None
         elif len(metrics_data['timeSeries']) > 1 or len(metrics_data['timeSeries'][0]['points']) > 1:
             raise ValueError("Too much series or points {}".format(metrics_data))
         else:
             value = float(list(metrics_data['timeSeries'][0]['points'][0]['value'].values())[0])
-        
+
         # print("Value {}".format(value))
 
         self._write_metric_to_resource(resource, metrics_data, value)
@@ -270,4 +270,4 @@ class MetricsFilter(Filter):
         resource_class.filter_registry.register('metric', cls)
 
 
-gcp_resources.subscribe(gcp_resources.EVENT_REGISTER, MetricsFilter.register_resources)
+gcp_resources.subscribe(MetricsFilter.register_resources)

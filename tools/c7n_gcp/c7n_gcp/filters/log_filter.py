@@ -138,4 +138,4 @@ class StackdriverLogFilter(ValueFilter):
         resource_class.filter_registry.register('stackdriver-logs', cls)
 
 
-gcp_resources.subscribe(gcp_resources.EVENT_REGISTER, StackdriverLogFilter.register_resources)
+gcp_resources.subscribe(StackdriverLogFilter.register_resources)
