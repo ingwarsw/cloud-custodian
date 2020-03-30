@@ -37,7 +37,7 @@ class GoogleCloud(Provider):
 
     def get_session_factory(self, options):
         """Get a credential/session factory for api usage."""
-        return partial(Session, project_id=options.account_id)
+        return partial(Session, project_id=options.account_id, quota_max_calls=240, quota_period=60, use_rate_limiter=True)
 
 
 resources = GoogleCloud.resources
