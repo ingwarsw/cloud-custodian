@@ -19,6 +19,8 @@ import uuid
 
 from c7n.config import Config
 from c7n.policy import PolicyCollection
+from c7n.resources import load_resources
+from c7n.structure import StructureParser
 
 # Load resource plugins
 from c7n_gcp.entry import initialize_gcp
@@ -31,25 +33,26 @@ logging.getLogger().setLevel(logging.INFO)
 
 
 def run(event, context=None):
-    # policies file should always be valid in functions so do loading naively
-    with open('config.json') as f:
-        policy_config = json.load(f)
+    # one time initialization for cold starts.
+    global policy_config, policy_data
+    if policy_config is None:
+        with open('config.json') as f:
+            policy_data = json.load(f)
+        options_overrides = \
+            policy_data['policies'][0].get('mode', {}).get('execution-options', {})
+
+        # if output_dir specified use that, otherwise make a temp directory
+        if 'output_dir' not in options_overrides:
+            options_overrides['output_dir'] = get_tmp_output_dir()
+
+        policy_config = Config.empty(**options_overrides)
+        load_resources(StructureParser().get_resource_types(policy_data))
 
     if not policy_config or not policy_config.get('policies'):
         log.error('Invalid policy config')
         return False
 
-    options_overrides = \
-        policy_config['policies'][0].get('mode', {}).get('execution-options', {})
-
-    # if output_dir specified use that, otherwise make a temp directory
-    if 'output_dir' not in options_overrides:
-        options_overrides['output_dir'] = get_tmp_output_dir()
-
-    # merge all our options in
-    options = Config.empty(**options_overrides)
-
-    policies = PolicyCollection.from_data(policy_config, options)
+    policies = PolicyCollection.from_data(policy_data, policy_config)
     if policies:
         for p in policies:
             log.info("running policy %s", p.name)
