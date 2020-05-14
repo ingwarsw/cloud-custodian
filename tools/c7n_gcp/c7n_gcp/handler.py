@@ -31,6 +31,11 @@ log = logging.getLogger('custodian.gcp.functions')
 
 logging.getLogger().setLevel(logging.INFO)
 
+# config.json policy data dict
+policy_data = None
+
+# execution options for the policy
+policy_config = None
 
 def run(event, context=None):
     # one time initialization for cold starts.
