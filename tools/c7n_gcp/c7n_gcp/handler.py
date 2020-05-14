@@ -53,7 +53,7 @@ def run(event, context=None):
         policy_config = Config.empty(**options_overrides)
         load_resources(StructureParser().get_resource_types(policy_data))
 
-    if not policy_config or not policy_config.get('policies'):
+    if not policy_data or not policy_data.get('policies'):
         log.error('Invalid policy config')
         return False
 
