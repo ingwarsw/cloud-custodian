@@ -32,7 +32,9 @@ class PubSubTopic(QueryResourceManager):
         component = 'projects.topics'
         enum_spec = ('list', 'topics[]', None)
         scope_template = "projects/{}"
-        id = "name"
+        name = id = "name"
+        default_report_fields = ["name", "kmsKeyName"]
+        asset_type = "pubsub.googleapis.com/Topic"
 
         @staticmethod
         def get(client, resource_info):
@@ -60,7 +62,11 @@ class PubSubSubscription(QueryResourceManager):
         component = 'projects.subscriptions'
         enum_spec = ('list', 'subscriptions[]', None)
         scope_template = 'projects/{}'
-        id = 'name'
+        name = id = 'name'
+        default_report_fields = [
+            "name", "topic", "ackDeadlineSeconds",
+            "retainAckedMessages", "messageRetentionDuration"]
+        asset_type = "pubsub.googleapis.com/Subscription"
 
         @staticmethod
         def get(client, resource_info):
@@ -88,7 +94,9 @@ class PubSubSnapshot(QueryResourceManager):
         component = 'projects.snapshots'
         enum_spec = ('list', 'snapshots[]', None)
         scope_template = 'projects/{}'
-        id = 'name'
+        name = id = 'name'
+        default_report_fields = [
+            "name", "topic", "expireTime"]
 
 
 @PubSubSnapshot.action_registry.register('delete')

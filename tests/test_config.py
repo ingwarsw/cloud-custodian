@@ -11,8 +11,6 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-from __future__ import absolute_import, division, print_function, unicode_literals
-
 from c7n.exceptions import PolicyValidationError
 from .common import BaseTest
 
@@ -35,6 +33,19 @@ class ConfigRecorderTest(BaseTest):
 
 
 class ConfigComplianceTest(BaseTest):
+
+    def test_config_with_inconsistent_hub_rule(self):
+        factory = self.replay_flight_data('test_config_inconsistent_hub_rule')
+        p = self.load_policy({
+            'name': 'compliance',
+            'resource': 'aws.cloudtrail',
+            'filters': [
+                {'type': 'config-compliance',
+                 'states': ['NON_COMPLIANT'],
+                 'rules': ['securityhub-cloud-trail-encryption-enabled-dadfg6']}]},
+            session_factory=factory)
+        resources = p.run()
+        self.assertEqual(len(resources), 3)
 
     def test_compliance(self):
         factory = self.replay_flight_data('test_config_compliance')
@@ -82,13 +93,11 @@ class ConfigRuleTest(BaseTest):
         resources = p.run()
         self.assertEqual(len(resources), 3)
         self.assertEqual(
-            set(
-                (
-                    "custodian-bucket-tags",
-                    "custodian-bucket-ver-tags",
-                    "custodian-db-tags",
-                )
-            ),
+            {
+                "custodian-bucket-tags",
+                "custodian-bucket-ver-tags",
+                "custodian-db-tags",
+            },
             {r["ConfigRuleName"] for r in resources},
         )
 

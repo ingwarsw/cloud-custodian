@@ -11,8 +11,6 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-from __future__ import absolute_import, division, print_function, unicode_literals
-
 from botocore.exceptions import ClientError
 
 from c7n.actions import BaseAction
@@ -32,6 +30,7 @@ class CognitoIdentityPool(QueryResourceManager):
         id = 'IdentityPoolId'
         name = 'IdentityPoolName'
         arn_type = "identitypool"
+        cfn_type = 'AWS::Cognito::IdentityPool'
 
 
 @CognitoIdentityPool.action_registry.register('delete')
@@ -79,6 +78,7 @@ class CognitoUserPool(QueryResourceManager):
         id = 'Id'
         name = 'Name'
         arn_type = "userpool"
+        cfn_type = 'AWS::Cognito::UserPool'
 
 
 @CognitoUserPool.action_registry.register('delete')

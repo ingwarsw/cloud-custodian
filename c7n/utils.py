@@ -11,10 +11,7 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-from __future__ import absolute_import, division, print_function, unicode_literals
-
 import copy
-import csv
 from datetime import datetime, timedelta
 import json
 import itertools
@@ -26,10 +23,8 @@ import re
 import sys
 import threading
 import time
-
-import six
-from six.moves.urllib import parse as urlparse
-from six.moves.urllib.request import getproxies
+from urllib import parse as urlparse
+from urllib.request import getproxies
 
 from c7n import config
 from c7n.exceptions import ClientError, PolicyValidationError
@@ -53,23 +48,6 @@ class SafeDumper(BaseSafeDumper or object):
 
 
 log = logging.getLogger('custodian.utils')
-
-
-class UnicodeWriter:
-    """utf8 encoding csv writer."""
-
-    def __init__(self, f, dialect=csv.excel, **kwds):
-        self.writer = csv.writer(f, dialect=dialect, **kwds)
-        if sys.version_info.major == 3:
-            self.writerows = self.writer.writerows
-            self.writerow = self.writer.writerow
-
-    def writerow(self, row):
-        self.writer.writerow([s.encode("utf-8") for s in row])
-
-    def writerows(self, rows):
-        for row in rows:
-            self.writerow(row)
 
 
 class VarsSubstitutionError(Exception):
@@ -327,7 +305,9 @@ REGION_PARTITION_MAP = {
     'us-gov-east-1': 'aws-us-gov',
     'us-gov-west-1': 'aws-us-gov',
     'cn-north-1': 'aws-cn',
-    'cn-northwest-1': 'aws-cn'
+    'cn-northwest-1': 'aws-cn',
+    'us-isob-east-1': 'aws-iso-b',
+    'us-iso-east-1': 'aws-iso'
 }
 
 
@@ -366,7 +346,7 @@ def snapshot_identifier(prefix, db_identifier):
 retry_log = logging.getLogger('c7n.retry')
 
 
-def get_retry(codes=(), max_attempts=8, min_delay=1, log_retries=False):
+def get_retry(retry_codes=(), max_attempts=8, min_delay=1, log_retries=False):
     """Decorator for retry boto3 api call on transient errors.
 
     https://www.awsarchitectureblog.com/2015/03/backoff.html
@@ -386,13 +366,15 @@ def get_retry(codes=(), max_attempts=8, min_delay=1, log_retries=False):
     """
     max_delay = max(min_delay, 2) ** max_attempts
 
-    def _retry(func, *args, **kw):
+    def _retry(func, *args, ignore_err_codes=(), **kw):
         for idx, delay in enumerate(
                 backoff_delays(min_delay, max_delay, jitter=True)):
             try:
                 return func(*args, **kw)
             except ClientError as e:
-                if e.response['Error']['Code'] not in codes:
+                if e.response['Error']['Code'] in ignore_err_codes:
+                    return
+                elif e.response['Error']['Code'] not in retry_codes:
                     raise
                 elif idx == max_attempts - 1:
                     raise
@@ -423,7 +405,7 @@ def parse_cidr(value):
     if '/' not in value:
         klass = ipaddress.ip_address
     try:
-        v = klass(six.text_type(value))
+        v = klass(str(value))
     except (ipaddress.AddressValueError, ValueError):
         v = None
     return v
@@ -524,7 +506,7 @@ def format_string_values(obj, err_fallback=(IndexError, KeyError), *args, **kwar
         for item in obj:
             new.append(format_string_values(item, *args, **kwargs))
         return new
-    elif isinstance(obj, six.string_types):
+    elif isinstance(obj, str):
         try:
             return obj.format(*args, **kwargs)
         except err_fallback:
@@ -564,7 +546,7 @@ def get_proxy_url(url):
     return None
 
 
-class FormatDate(object):
+class FormatDate:
     """a datetime wrapper with extended pyformat syntax"""
 
     date_increment = re.compile(r'\+[0-9]+[Mdh]')
@@ -600,7 +582,7 @@ class FormatDate(object):
         return d.__format__(fmt)
 
 
-class QueryParser(object):
+class QueryParser:
 
     QuerySchema = {}
     type_name = ''
@@ -629,8 +611,8 @@ class QueryParser(object):
 
             if not cls.multi_value and isinstance(values, list):
                 raise PolicyValidationError(
-                    "%s QUery Filter Invalid Key: Value:%s Must be single valued" % (
-                        cls.type_name, key, values))
+                    "%s Query Filter Invalid Key: Value:%s Must be single valued" % (
+                        cls.type_name, key))
             elif not cls.multi_value:
                 values = [values]
 
@@ -641,7 +623,7 @@ class QueryParser(object):
 
             vtype = cls.QuerySchema.get(key)
             if vtype is None and key.startswith('tag'):
-                vtype = six.string_types
+                vtype = str
 
             if not isinstance(values, list):
                 raise PolicyValidationError(
@@ -649,7 +631,7 @@ class QueryParser(object):
                         cls.type_name, data,))
 
             for v in values:
-                if isinstance(vtype, tuple) and vtype != six.string_types:
+                if isinstance(vtype, tuple):
                     if v not in vtype:
                         raise PolicyValidationError(
                             "%s Query Filter Invalid Value: %s Valid: %s" % (
@@ -668,6 +650,17 @@ def get_annotation_prefix(s):
     return 'c7n:{}'.format(s)
 
 
+def merge_dict_list(dict_iter):
+    """take an list of dictionaries and merge them.
+
+    last dict wins/overwrites on keys.
+    """
+    result = {}
+    for d in dict_iter:
+        result.update(d)
+    return result
+
+
 def merge_dict(a, b):
     """Perform a merge of dictionaries a and b
 
@@ -684,3 +677,10 @@ def merge_dict(a, b):
         if k not in d:
             d[k] = v
     return d
+
+
+def select_keys(d, keys):
+    result = {}
+    for k in keys:
+        result[k] = d.get(k)
+    return result

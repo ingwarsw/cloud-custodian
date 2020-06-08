@@ -11,8 +11,6 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-from __future__ import absolute_import, division, print_function, unicode_literals
-
 # PYTHON_ARGCOMPLETE_OK  (Must be in first 1024 bytes, so if tab completion
 # is failing, move this above the license)
 
@@ -33,7 +31,6 @@ except ImportError:
     def setproctitle(t):
         return None
 
-from c7n.commands import schema_completer
 from c7n.config import Config
 
 DEFAULT_REGION = 'us-east-1'
@@ -168,24 +165,18 @@ def _logs_options(p):
     )
 
 
-def _schema_tab_completer(prefix, parsed_args, **kwargs):
-    # If we are printing the summary we discard the resource
-    if parsed_args.summary:
-        return []
-
-    return schema_completer(prefix)
-
-
 def _schema_options(p):
     """ Add options specific to schema subcommand. """
 
     p.add_argument(
-        'resource', metavar='selector', nargs='?',
-        default=None).completer = _schema_tab_completer
+        'resource', metavar='selector', nargs='?', default=None)
     p.add_argument(
         '--summary', action="store_true",
         help="Summarize counts of available resources, actions and filters")
-    p.add_argument('--json', action="store_true", help=argparse.SUPPRESS)
+    p.add_argument('--json', action="store_true",
+        help="Export custodian's jsonschema")
+    p.add_argument('--outline', action="store_true",
+        help="Print outline of all resources and their actions and filters")
     p.add_argument("-v", "--verbose", action="count", help="Verbose logging")
     p.add_argument("-q", "--quiet", action="count", help=argparse.SUPPRESS)
     p.add_argument("--debug", default=False, help=argparse.SUPPRESS)
@@ -253,7 +244,7 @@ def setup_parser():
     run.add_argument(
         "--trace",
         dest="tracer",
-        help=argparse.SUPPRESS,
+        help="Tracing integration",
         default=None, nargs="?", const="default")
 
     schema_desc = ("Browse the available vocabularies (resources, filters, modes, and "

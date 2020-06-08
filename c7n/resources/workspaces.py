@@ -11,9 +11,6 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-from __future__ import (absolute_import, division, print_function,
-                        unicode_literals)
-
 import functools
 import itertools
 
@@ -33,6 +30,7 @@ class Workspace(QueryResourceManager):
         arn_type = 'workspace'
         name = id = dimension = 'WorkspaceId'
         universal_taggable = True
+        cfn_type = 'AWS::WorkSpaces::Workspace'
 
     def augment(self, resources):
         return universal_augment(self, resources)

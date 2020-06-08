@@ -11,8 +11,6 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-from __future__ import absolute_import, division, print_function, unicode_literals
-
 from concurrent.futures import as_completed
 from datetime import datetime, timedelta
 
@@ -39,7 +37,7 @@ class Alarm(QueryResourceManager):
         filter_type = 'list'
         name = 'AlarmName'
         date = 'AlarmConfigurationUpdatedTimestamp'
-        config_type = 'AWS::CloudWatch::Alarm'
+        cfn_type = config_type = 'AWS::CloudWatch::Alarm'
 
     retry = staticmethod(get_retry(('Throttled',)))
 
@@ -84,12 +82,16 @@ class EventRule(QueryResourceManager):
 
     class resource_type(TypeInfo):
         service = 'events'
-        arn_type = 'event-rule'
+        arn_type = 'rule'
         enum_spec = ('list_rules', 'Rules', None)
         name = "Name"
         id = "Name"
         filter_name = "NamePrefix"
         filter_type = "scalar"
+        cfn_type = 'AWS::Events::Rule'
+        universal_taggable = object()
+
+    augment = universal_augment
 
 
 @EventRule.filter_registry.register('metrics')
@@ -160,6 +162,7 @@ class LogGroup(QueryResourceManager):
         dimension = 'LogGroupName'
         date = 'creationTime'
         universal_taggable = True
+        cfn_type = 'AWS::Logs::LogGroup'
 
     def augment(self, resources):
         resources = universal_augment(self, resources)
@@ -226,7 +229,11 @@ class Delete(BaseAction):
     def process(self, resources):
         client = local_session(self.manager.session_factory).client('logs')
         for r in resources:
-            client.delete_log_group(logGroupName=r['logGroupName'])
+            try:
+                self.manager.retry(
+                    client.delete_log_group, logGroupName=r['logGroupName'])
+            except client.exceptions.ResourceNotFoundException:
+                continue
 
 
 @LogGroup.filter_registry.register('last-write')
@@ -256,7 +263,8 @@ class LastWriteDays(Filter):
         return [r for r in resources if self.check_group(client, r)]
 
     def check_group(self, client, group):
-        streams = client.describe_log_streams(
+        streams = self.manager.retry(
+            client.describe_log_streams,
             logGroupName=group['logGroupName'],
             orderBy='LastEventTime',
             descending=True,

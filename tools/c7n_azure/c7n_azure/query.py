@@ -18,7 +18,6 @@ try:
 except ImportError:
     from collections import Iterable
 
-import six
 from c7n_azure import constants
 from c7n_azure.actions.logic_app import LogicAppAction
 from azure.mgmt.resourcegraph.models import QueryRequest
@@ -36,7 +35,7 @@ from c7n.utils import local_session
 log = logging.getLogger('custodian.azure.query')
 
 
-class ResourceQuery(object):
+class ResourceQuery:
 
     def __init__(self, session_factory):
         self.session_factory = session_factory
@@ -77,7 +76,7 @@ class ResourceQuery(object):
 
 
 @sources.register('describe-azure')
-class DescribeSource(object):
+class DescribeSource:
     resource_query_factory = ResourceQuery
 
     def __init__(self, manager):
@@ -98,7 +97,7 @@ class DescribeSource(object):
 
 
 @sources.register('resource-graph')
-class ResourceGraphSource(object):
+class ResourceGraphSource:
 
     def __init__(self, manager):
         self.manager = manager
@@ -185,8 +184,7 @@ class TypeMeta(type):
             cls.client)
 
 
-@six.add_metaclass(TypeMeta)
-class TypeInfo(object):
+class TypeInfo(metaclass=TypeMeta):
     doc_groups = None
 
     """api client construction information"""
@@ -203,8 +201,7 @@ class TypeInfo(object):
         return {}
 
 
-@six.add_metaclass(TypeMeta)
-class ChildTypeInfo(TypeInfo):
+class ChildTypeInfo(TypeInfo, metaclass=TypeMeta):
     """api client construction information for child resources"""
     parent_manager_name = ''
     annotate_parent = True
@@ -230,8 +227,7 @@ class QueryMeta(type):
         return super(QueryMeta, cls).__new__(cls, name, parents, attrs)
 
 
-@six.add_metaclass(QueryMeta)
-class QueryResourceManager(ResourceManager):
+class QueryResourceManager(ResourceManager, metaclass=QueryMeta):
     class resource_type(TypeInfo):
         pass
 
@@ -329,8 +325,7 @@ class QueryResourceManager(ResourceManager):
         self.source.validate()
 
 
-@six.add_metaclass(QueryMeta)
-class ChildResourceManager(QueryResourceManager):
+class ChildResourceManager(QueryResourceManager, metaclass=QueryMeta):
     child_source = 'describe-child-azure'
     parent_manager = None
 

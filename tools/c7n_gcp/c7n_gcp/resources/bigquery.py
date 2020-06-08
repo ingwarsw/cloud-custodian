@@ -30,6 +30,11 @@ class DataSet(QueryResourceManager):
         scope_key = 'projectId'
         get_requires_event = True
         id = "id"
+        name = "friendlyName"
+        default_report_fields = [
+            id, name, "description",
+            "creationTime", "lastModifiedTime"]
+        asset_type = "bigquery.googleapis.com/Dataset"
 
         @staticmethod
         def get(client, event):
@@ -60,6 +65,7 @@ class DataSet(QueryResourceManager):
 class BigQueryJob(QueryResourceManager):
     """GCP resource: https://cloud.google.com/bigquery/docs/reference/rest/v2/jobs
     """
+    # its unclear why this is needed
     class resource_type(TypeInfo):
         service = 'bigquery'
         version = 'v2'
@@ -68,7 +74,8 @@ class BigQueryJob(QueryResourceManager):
         get_requires_event = True
         scope = 'project'
         scope_key = 'projectId'
-        id = 'id'
+        name = id = 'id'
+        default_report_fields = ["id", "user_email", "status.state"]
 
         @staticmethod
         def get(client, event):
@@ -91,6 +98,8 @@ class BigQueryProject(QueryResourceManager):
         enum_spec = ('list', 'projects[]', None)
         scope = 'global'
         id = 'id'
+        name = "friendlyName"
+        default_report_fields = [id, name]
 
 
 @resources.register('bq-table')
@@ -105,6 +114,9 @@ class BigQueryTable(ChildResourceManager):
         enum_spec = ('list', 'tables[]', None)
         scope_key = 'projectId'
         id = 'id'
+        name = "friendlyName"
+        default_report_fields = [
+            id, name, "description", "creationTime", "lastModifiedTime", "numRows", "numBytes"]
         parent_spec = {
             'resource': 'bq-dataset',
             'child_enum_params': [
@@ -115,6 +127,7 @@ class BigQueryTable(ChildResourceManager):
                 ('tableReference.datasetId', 'datasetId'),
             ]
         }
+        asset_type = "bigquery.googleapis.com/Table"
 
         @staticmethod
         def get(client, event):

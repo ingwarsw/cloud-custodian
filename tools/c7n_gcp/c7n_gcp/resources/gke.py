@@ -33,7 +33,11 @@ class KubernetesCluster(QueryResourceManager):
         scope = 'project'
         scope_key = 'parent'
         scope_template = "projects/{}/locations/-"
-        id = "name"
+        name = id = "name"
+        default_report_fields = [
+            'name', 'description', 'status', 'currentMasterVersion', 'currentNodeVersion',
+            'currentNodeCount', 'location']
+        asset_type = 'container.googleapis.com/Cluster'
 
         @staticmethod
         def get(client, resource_info):
@@ -77,8 +81,10 @@ class KubernetesClusterNodePool(ChildResourceManager):
         component = 'projects.locations.clusters.nodePools'
         enum_spec = ('list', 'nodePools[]', None)
         scope = 'global'
-        id = 'name'
+        name = id = 'name'
         parent_spec = {'resource': 'gke-cluster'}
+        asset_type = 'container.googleapis.com/NodePool'
+        default_report_fields = ['name', 'status', 'version']
 
         @staticmethod
         def get(client, resource_info):

@@ -11,12 +11,10 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-from __future__ import absolute_import, division, print_function, unicode_literals
-
 from unittest import TestCase
 from c7n import cache, config
 from argparse import Namespace
-from six.moves import cPickle as pickle
+import pickle
 import tempfile
 import mock
 import os

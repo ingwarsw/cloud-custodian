@@ -11,8 +11,6 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-from __future__ import absolute_import, division, print_function, unicode_literals
-
 import logging
 
 from botocore.exceptions import ClientError
@@ -42,6 +40,7 @@ class RDSParamGroup(QueryResourceManager):
         name = id = 'DBParameterGroupName'
         dimension = 'DBParameterGroupName'
         permissions_enum = ('rds:DescribeDBParameterGroups',)
+        cfn_type = 'AWS::RDS::DBParameterGroup'
 
     filter_registry = pg_filters
     action_registry = pg_actions
@@ -64,18 +63,19 @@ class RDSClusterParamGroup(QueryResourceManager):
         name = id = 'DBClusterParameterGroupName'
         dimension = 'DBClusterParameterGroupName'
         permissions_enum = ('rds:DescribeDBClusterParameterGroups',)
+        cfn_type = 'AWS::RDS::DBClusterParameterGroup'
 
     filter_registry = pg_cluster_filters
     action_registry = pg_cluster_actions
 
 
-class PGMixin(object):
+class PGMixin:
 
     def get_pg_name(self, pg):
         return pg['DBParameterGroupName']
 
 
-class PGClusterMixin(object):
+class PGClusterMixin:
 
     def get_pg_name(self, pg):
         return pg['DBClusterParameterGroupName']

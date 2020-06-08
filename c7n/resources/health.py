@@ -11,11 +11,7 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-from __future__ import absolute_import, division, print_function, unicode_literals
-
 import itertools
-
-import six
 
 from c7n.exceptions import PolicyValidationError
 from c7n.query import QueryResourceManager, TypeInfo
@@ -107,7 +103,7 @@ HEALTH_VALID_FILTERS = {
 }
 
 
-class QueryFilter(object):
+class QueryFilter:
 
     @classmethod
     def parse(cls, data):
@@ -144,6 +140,6 @@ class QueryFilter(object):
 
     def query(self):
         value = self.value
-        if isinstance(self.value, six.string_types):
+        if isinstance(self.value, str):
             value = [self.value]
         return {'Name': self.key, 'Values': value}

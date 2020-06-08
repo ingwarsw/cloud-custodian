@@ -11,8 +11,6 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-from __future__ import absolute_import, division, print_function, unicode_literals
-
 import datetime
 from dateutil import tz as tzutil
 import json
@@ -706,7 +704,10 @@ class RDSTest(BaseTest):
             {
                 "name": "db-subnet-group-unused",
                 "resource": "rds-subnet-group",
-                "filters": [{"type": "unused"}],
+                "filters": [
+                    {'DBSubnetGroupName': 'not-used'},
+                    {"type": "unused"}
+                ],
             },
             session_factory=session_factory,
         )
@@ -714,6 +715,7 @@ class RDSTest(BaseTest):
         resources = policy.run()
 
         self.assertEqual(len(resources), 1, "Resources should be unused")
+        self.assertEqual(resources[0]['DBSubnetGroupName'], "not-used")
 
     def test_rds_modify_db(self):
         session_factory = self.replay_flight_data("test_rds_modify_db")

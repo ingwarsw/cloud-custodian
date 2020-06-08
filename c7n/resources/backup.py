@@ -11,8 +11,6 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-from __future__ import absolute_import, division, print_function, unicode_literals
-
 from c7n.manager import resources
 from c7n.filters.kms import KmsRelatedFilter
 from c7n.query import QueryResourceManager, TypeInfo
@@ -30,6 +28,7 @@ class BackupPlan(QueryResourceManager):
         id = 'BackupPlanName'
         name = 'BackupPlanId'
         arn = 'BackupPlanArn'
+        cfn_type = 'AWS::Backup::BackupPlan'
         universal_taggable = object()
 
     def augment(self, resources):
@@ -69,6 +68,7 @@ class BackupVault(QueryResourceManager):
         arn = 'BackupVaultArn'
         arn_type = 'backup-vault'
         universal_taggable = object()
+        cfn_type = 'AWS::Backup::BackupVault'
 
     def augment(self, resources):
         return universal_augment(self, super(BackupVault, self).augment(resources))

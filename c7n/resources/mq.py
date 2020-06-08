@@ -11,8 +11,6 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-from __future__ import absolute_import, division, print_function, unicode_literals
-
 from c7n.actions import Action
 from c7n.filters.metrics import MetricsFilter
 from c7n.filters.vpc import SecurityGroupFilter, SubnetFilter
@@ -30,7 +28,7 @@ class MessageBroker(QueryResourceManager):
         enum_spec = ('list_brokers', 'BrokerSummaries', None)
         detail_spec = (
             'describe_broker', 'BrokerId', 'BrokerId', None)
-
+        cfn_type = 'AWS::AmazonMQ::Broker'
         id = 'BrokerId'
         arn = 'BrokerArn'
         name = 'BrokerName'

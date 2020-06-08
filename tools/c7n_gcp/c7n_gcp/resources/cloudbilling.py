@@ -27,7 +27,9 @@ class CloudBillingAccount(QueryResourceManager):
         enum_spec = ('list', 'billingAccounts[]', None)
         get_requires_event = True
         scope = None
-        id = 'name'
+        name = id = 'name'
+        default_report_fields = ['id', 'displayName']
+        asset_type = "cloudbilling.googleapis.com/BillingAccount"
 
         @staticmethod
         def get(client, event):

@@ -11,8 +11,6 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-from __future__ import absolute_import, division, print_function, unicode_literals
-
 from .common import BaseTest, functional
 
 import base64
@@ -86,17 +84,15 @@ class NotifyTest(BaseTest):
         body = json.loads(zlib.decompress(base64.b64decode(messages[0]["Body"])))
         self.assertEqual(
             set(body.keys()),
-            set(
-                (
-                    "account_id",
-                    "action",
-                    "event",
-                    "policy",
-                    "region",
-                    "account",
-                    "resources",
-                )
-            ),
+            {
+                "account_id",
+                "action",
+                "event",
+                "policy",
+                "region",
+                "account",
+                "resources",
+            },
         )
 
     def test_resource_prep(self):

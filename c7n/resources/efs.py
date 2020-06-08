@@ -11,8 +11,6 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-from __future__ import absolute_import, division, print_function, unicode_literals
-
 from c7n.actions import Action, BaseAction
 from c7n.exceptions import PolicyValidationError
 from c7n.filters.kms import KmsRelatedFilter
@@ -40,6 +38,7 @@ class ElasticFileSystem(QueryResourceManager):
         filter_name = 'FileSystemId'
         filter_type = 'scalar'
         universal_taggable = True
+        cfn_type = 'AWS::EFS::FileSystem'
 
     augment = universal_augment
 
@@ -56,6 +55,7 @@ class ElasticFileSystemMountTarget(ChildResourceManager):
         filter_name = 'MountTargetId'
         filter_type = 'scalar'
         arn = False
+        cfn_type = 'AWS::EFS::MountTarget'
 
 
 @ElasticFileSystemMountTarget.filter_registry.register('subnet')

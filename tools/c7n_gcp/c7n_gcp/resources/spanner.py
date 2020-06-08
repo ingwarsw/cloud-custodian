@@ -19,7 +19,9 @@ from c7n_gcp.query import QueryResourceManager, TypeInfo, ChildTypeInfo, ChildRe
 
 @resources.register('spanner-instance')
 class SpannerInstance(QueryResourceManager):
-
+    """
+    https://cloud.google.com/spanner/docs/reference/rest/v1/projects.instances
+    """
     class resource_type(TypeInfo):
         service = 'spanner'
         version = 'v1'
@@ -27,10 +29,13 @@ class SpannerInstance(QueryResourceManager):
         enum_spec = ('list', 'instances[]', None)
         scope_key = 'parent'
         scope_template = 'projects/{}'
-        id = 'name'
+        name = id = 'name'
+        default_report_fields = [
+            "name", "displayName", "nodeCount", "state", "config"]
 
         labels = True
         labels_op = 'patch'
+        asset_type = "spanner.googleapis.com/Instance"
 
         @staticmethod
         def get(client, resource_info):
@@ -136,7 +141,7 @@ class SpannerDatabaseInstance(ChildResourceManager):
         version = 'v1'
         component = 'projects.instances.databases'
         enum_spec = ('list', 'databases[]', None)
-        id = 'name'
+        name = id = 'name'
         scope = None
         parent_spec = {
             'resource': 'spanner-instance',
@@ -144,6 +149,8 @@ class SpannerDatabaseInstance(ChildResourceManager):
                 ('name', 'parent')
             ]
         }
+        default_report_fields = ["name", "state", "createTime"]
+        asset_type = "spanner.googleapis.com/Database"
 
         @staticmethod
         def get(client, resource_info):

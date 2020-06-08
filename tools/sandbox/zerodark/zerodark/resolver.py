@@ -14,13 +14,12 @@
 
 import json
 import ipaddress
-import six
 import sqlite3
 
 from .utils import row_factory
 
 
-class IPResolver(object):
+class IPResolver:
     """Resolve as much info as we can about a given ip.
 
     Typically this is a two level lookup.
@@ -92,7 +91,7 @@ class IPResolver(object):
             # to revisit. also potentially an option on ip string
             # prefix match as a sanity base.
             elif not info:
-                n = ipaddress.IPv4Address(six.text_type(ip))
+                n = ipaddress.IPv4Address(str(ip))
                 found = False
                 for service, cidr_set in self.aws_cidrs.items():
                     for cidr in cidr_set:

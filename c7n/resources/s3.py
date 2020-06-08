@@ -37,8 +37,6 @@ Actions:
    delivery.
 
 """
-from __future__ import absolute_import, division, print_function, unicode_literals
-
 import copy
 import functools
 import json
@@ -48,8 +46,6 @@ import math
 import os
 import time
 import ssl
-
-import six
 
 from botocore.client import Config
 from botocore.exceptions import ClientError
@@ -90,40 +86,6 @@ actions.register('put-metric', PutMetric)
 MAX_COPY_SIZE = 1024 * 1024 * 1024 * 2
 
 
-@resources.register('s3')
-class S3(query.QueryResourceManager):
-
-    class resource_type(query.TypeInfo):
-        service = 's3'
-        arn_type = ''
-        enum_spec = ('list_buckets', 'Buckets[]', None)
-        detail_spec = ('list_objects', 'Bucket', 'Contents[]')
-        name = id = 'Name'
-        date = 'CreationDate'
-        dimension = 'BucketName'
-        config_type = 'AWS::S3::Bucket'
-
-    filter_registry = filters
-    action_registry = actions
-
-    def get_arns(self, resources):
-        return ["arn:aws:s3:::{}".format(r["Name"]) for r in resources]
-
-    def get_source(self, source_type):
-        if source_type == 'describe':
-            return DescribeS3(self)
-        elif source_type == 'config':
-            return ConfigS3(self)
-        else:
-            return super(S3, self).get_source(source_type)
-
-    @classmethod
-    def get_permissions(cls):
-        perms = ["s3:ListAllMyBuckets"]
-        perms.extend([n[-1] for n in S3_AUGMENT_TABLE])
-        return perms
-
-
 class DescribeS3(query.DescribeSource):
 
     def augment(self, buckets):
@@ -135,11 +97,11 @@ class DescribeS3(query.DescribeSource):
             results = list(filter(None, results))
             return results
 
-    def get_resources(self, bucket_names):
-        return [{'Name': b} for b in bucket_names]
-
 
 class ConfigS3(query.ConfigSource):
+
+    # normalize config's janky idiosyncratic bespoke formating to the
+    # standard describe api responses.
 
     def get_query_params(self, query):
         q = super(ConfigS3, self).get_query_params(query)
@@ -168,7 +130,7 @@ class ConfigS3(query.ConfigSource):
                 raise ValueError("unhandled supplementary config %s", k)
                 continue
             v = cfg[k]
-            if isinstance(cfg[k], six.string_types):
+            if isinstance(cfg[k], str):
                 v = json.loads(cfg[k])
             method(resource, v)
 
@@ -191,7 +153,7 @@ class ConfigS3(query.ConfigSource):
 
     def handle_AccessControlList(self, resource, item_value):
         # double serialized in config for some reason
-        if isinstance(item_value, six.string_types):
+        if isinstance(item_value, str):
             item_value = json.loads(item_value)
 
         resource['Acl'] = {}
@@ -391,6 +353,36 @@ class ConfigS3(query.ConfigSource):
                 if r['redirect'][ck]:
                     redirect[rk] = r['redirect'][ck]
         resource['Website'] = website
+
+
+@resources.register('s3')
+class S3(query.QueryResourceManager):
+
+    class resource_type(query.TypeInfo):
+        service = 's3'
+        arn_type = ''
+        enum_spec = ('list_buckets', 'Buckets[]', None)
+        detail_spec = ('list_objects', 'Bucket', 'Contents[]')
+        name = id = 'Name'
+        date = 'CreationDate'
+        dimension = 'BucketName'
+        cfn_type = config_type = 'AWS::S3::Bucket'
+
+    filter_registry = filters
+    action_registry = actions
+    source_mapping = {
+        'describe': DescribeS3,
+        'config': ConfigS3
+    }
+
+    def get_arns(self, resources):
+        return ["arn:aws:s3:::{}".format(r["Name"]) for r in resources]
+
+    @classmethod
+    def get_permissions(cls):
+        perms = ["s3:ListAllMyBuckets"]
+        perms.extend([n[-1] for n in S3_AUGMENT_TABLE])
+        return perms
 
 
 S3_CONFIG_SUPPLEMENT_NULL_MAP = {
@@ -772,14 +764,18 @@ class BucketFilterBase(Filter):
 
 @S3.action_registry.register("post-finding")
 class BucketFinding(PostFinding):
+
+    resource_type = 'AwsS3Bucket'
+
     def format_resource(self, r):
         owner = r.get("Acl", {}).get("Owner", {})
         resource = {
-            "Type": "AwsS3Bucket",
+            "Type": self.resource_type,
             "Id": "arn:aws:s3:::{}".format(r["Name"]),
             "Region": get_region(r),
             "Tags": {t["Key"]: t["Value"] for t in r.get("Tags", [])},
-            "Details": {"AwsS3Bucket": {"OwnerId": owner.get('ID', 'Unknown')}}
+            "Details": {self.resource_type: {
+                "OwnerId": owner.get('ID', 'Unknown')}}
         }
 
         if "DisplayName" in owner:
@@ -1141,7 +1137,7 @@ class DeleteBucketNotification(BucketActionBase):
 
         cfg = defaultdict(list)
 
-        for t in six.itervalues(BucketNotificationFilter.FIELDS):
+        for t in BucketNotificationFilter.FIELDS.values():
             for c in n.get(t, []):
                 if c['Id'] not in statement_ids:
                     cfg[t].append(c)
@@ -1344,7 +1340,7 @@ class SetBucketReplicationConfig(BucketActionBase):
     def process(self, buckets):
         with self.executor_factory(max_workers=3) as w:
             futures = {w.submit(self.process_bucket, bucket): bucket for bucket in buckets}
-            errors = list()
+            errors = []
             for future in as_completed(futures):
                 bucket = futures[future]
                 try:
@@ -1376,10 +1372,9 @@ class SetBucketReplicationConfig(BucketActionBase):
 class FilterPublicBlock(Filter):
     """Filter for s3 bucket public blocks
 
-    `scope`: Optional: Defaults to Any
-    `enabled`: Optional: Defaults to False
+    If no filter paramaters are provided it checks to see if any are unset or False.
 
-    The defaults essentially check to see if any public blocks are missing
+    If parameters are provided only the provided ones are checked.
 
     :example:
 
@@ -1391,145 +1386,133 @@ class FilterPublicBlock(Filter):
                 region: us-east-1
                 filters:
                   - type: check-public-block
-                    scope: Any
-                    enabled: False
-
+                    BlockPublicAcls: true
+                    BlockPublicPolicy: true
     """
 
     schema = type_schema(
         'check-public-block',
-        scope={
-            'type': 'string',
-            'enum': ['BlockPublicAcls', 'IgnorePublicAcls',
-                'BlockPublicPolicy', 'RestrictPublicBuckets', 'All', 'Any']},
-        enabled={'type': 'boolean'})
+        BlockPublicAcls={'type': 'boolean'},
+        IgnorePublicAcls={'type': 'boolean'},
+        BlockPublicPolicy={'type': 'boolean'},
+        RestrictPublicBuckets={'type': 'boolean'})
     permissions = ("s3:GetBucketPublicAccessBlock",)
+    keys = (
+        'BlockPublicPolicy', 'BlockPublicAcls', 'IgnorePublicAcls', 'RestrictPublicBuckets')
+    annotation_key = 'c7n:PublicAccessBlock'
 
     def process(self, buckets, event=None):
-        results = list()
+        results = []
         with self.executor_factory(max_workers=2) as w:
             futures = {w.submit(self.process_bucket, bucket): bucket for bucket in buckets}
-            for future in as_completed(futures):
-                if future.exception():
-                    raise future.exception()
-                if future.result():
-                    results.append(future.result())
+            for f in as_completed(futures):
+                if f.result():
+                    results.append(futures[f])
         return results
 
     def process_bucket(self, bucket):
         s3 = bucket_client(local_session(self.manager.session_factory), bucket)
-        enabled = self.data.get('enabled', False)
-        scope = self.data.get('scope', 'Any')
-        try:
-            config = s3.get_public_access_block(
-                Bucket=bucket['Name'])['PublicAccessBlockConfiguration']
-        except ClientError as e:
-            if e.response['Error']['Code'] == 'NoSuchPublicAccessBlockConfiguration':
-                # Set config to none because NoSuchPublicAccessBlockConfiguration error
-                # was returned. This is important later because it is symbolic of
-                # all blocks being set to false. See if/else in matches_filter func
-                config = None
-            else:
-                raise
-        if self.matches_filter(config, enabled, scope):
-            return {"Name": bucket['Name'], "publicblocks": config}
+        config = dict(bucket.get(self.annotation_key, {key: False for key in self.keys}))
+        if self.annotation_key not in bucket:
+            try:
+                config = s3.get_public_access_block(
+                    Bucket=bucket['Name'])['PublicAccessBlockConfiguration']
+            except ClientError as e:
+                if e.response['Error']['Code'] != 'NoSuchPublicAccessBlockConfiguration':
+                    raise
+            bucket[self.annotation_key] = config
+        return self.matches_filter(config)
 
-    def matches_filter(self, config, enabled, scope):
-        if config:
-            if scope == 'All':
-                return all(config.values()) if enabled else not any(config.values())
-            elif scope == 'Any':
-                return any(config.values()) if enabled else not all(config.values())
-            else:
-                return config[scope] if enabled else not config[scope]
+    def matches_filter(self, config):
+        key_set = [key for key in self.keys if key in self.data]
+        if key_set:
+            return all([self.data.get(key) is config[key] for key in key_set])
         else:
-            # When there is a null/none config, treat it as meaning no public blocks
-            # return False if checking for enabled=True because all are false
-            # return True if checking for enabled=False
-            return False if enabled else True
+            return not all(config.values())
 
 
 @actions.register('set-public-block')
 class SetPublicBlock(BucketActionBase):
     """Action to update Public Access blocks on S3 buckets
 
-    `scope`: Optional: Defaults to All
-    `state`: Optional: Defaults to enable
+    If no action parameters are provided all settings will be set to the `state`, which defaults
+
+    If action parameters are provided, those will be set and other extant values preserved.
 
     :example:
 
     .. code-block:: yaml
 
             policies:
-              - name: s3-dont-ignore-public-acls
+              - name: s3-public-block-enable-all
                 resource: s3
                 filters:
                   - type: check-public-block
-                    scope: BlockPublicAcls
-                    enabled: False
                 actions:
                   - type: set-public-block
-                    # scope: <------ optional (All by default)
-                    #   - BlockPublicAcls
-                    #   - IgnorePublicAcls
-                    # state: enable <------ optional (enable by default)
+
+            policies:
+              - name: s3-public-block-disable-all
+                resource: s3
+                filters:
+                  - type: check-public-block
+                actions:
+                  - type: set-public-block
+                    state: false
+
+            policies:
+              - name: s3-public-block-enable-some
+                resource: s3
+                filters:
+                  - or:
+                    - type: check-public-block
+                      BlockPublicAcls: false
+                    - type: check-public-block
+                      BlockPublicPolicy: false
+                actions:
+                  - type: set-public-block
+                    BlockPublicAcls: true
+                    BlockPublicPolicy: true
+
     """
 
     schema = type_schema(
         'set-public-block',
-        scope={
-            'type': 'array',
-            'items': {'type': 'string',
-                     'enum': ['BlockPublicAcls', 'IgnorePublicAcls',
-                        'BlockPublicPolicy', 'RestrictPublicBuckets', 'All']}},
-        state={'type': 'string',
-               'enum': ['enable', 'disable']})
+        state={'type': 'boolean', 'default': True},
+        BlockPublicAcls={'type': 'boolean'},
+        IgnorePublicAcls={'type': 'boolean'},
+        BlockPublicPolicy={'type': 'boolean'},
+        RestrictPublicBuckets={'type': 'boolean'})
     permissions = ("s3:GetBucketPublicAccessBlock", "s3:PutBucketPublicAccessBlock")
+    keys = FilterPublicBlock.keys
+    annotation_key = FilterPublicBlock.annotation_key
 
     def process(self, buckets):
         with self.executor_factory(max_workers=3) as w:
             futures = {w.submit(self.process_bucket, bucket): bucket for bucket in buckets}
             for future in as_completed(futures):
-                if future.exception():
-                    raise future.exception()
+                future.result()
 
     def process_bucket(self, bucket):
         s3 = bucket_client(local_session(self.manager.session_factory), bucket)
-        state = self.data.get('state', 'enable')
-        scopes = self.data.get('scope', ['All'])
-        try:
-            config = s3.get_public_access_block(
-                Bucket=bucket['Name'])['PublicAccessBlockConfiguration']
-        except ClientError as e:
-            if e.response['Error']['Code'] == 'NoSuchPublicAccessBlockConfiguration':
-                # Set config to none because NoSuchPublicAccessBlockConfiguration error
-                # was returned. This is important later because it is symbolic of
-                # all blocks being set to false. See if/else statement below
-                config = None
-            else:
-                raise
-        if config:
-            if 'All' in scopes:
-                for key in config.keys():
-                    config[key] = True if state == 'enable' else False
-            else:
-                for scope in scopes:
-                    config[scope] = True if state == 'enable' else False
-            s3.put_public_access_block(
-                Bucket=bucket['Name'],
-                PublicAccessBlockConfiguration=config
-            )
+        config = dict(bucket.get(self.annotation_key, {key: False for key in self.keys}))
+        if self.annotation_key not in bucket:
+            try:
+                config = s3.get_public_access_block(
+                    Bucket=bucket['Name'])['PublicAccessBlockConfiguration']
+            except ClientError as e:
+                if e.response['Error']['Code'] != 'NoSuchPublicAccessBlockConfiguration':
+                    raise
+
+        key_set = [key for key in self.keys if key in self.data]
+        if key_set:
+            for key in key_set:
+                config[key] = self.data.get(key)
         else:
-            s3.put_public_access_block(
-                Bucket=bucket['Name'],
-                PublicAccessBlockConfiguration={
-                    'BlockPublicAcls': True if state == 'enable' else False,
-                    'IgnorePublicAcls': True if state == 'enable' else False,
-                    'BlockPublicPolicy': True if state == 'enable' else False,
-                    'RestrictPublicBuckets': True if state == 'enable' else False
-                }
-            )
-        return {'Name': bucket['Name'], 'State': 'PublicBlocksUpdated'}
+            for key in self.keys:
+                config[key] = self.data.get('state', True)
+        s3.put_public_access_block(
+            Bucket=bucket['Name'], PublicAccessBlockConfiguration=config)
 
 
 @actions.register('toggle-versioning')
@@ -1739,7 +1722,7 @@ class AttachLambdaEncrypt(BucketActionBase):
             None, self.data.get('role', self.manager.config.assume_role),
             account_id=account_id, tags=self.data.get('tags'))
 
-        regions = set([get_region(b) for b in buckets])
+        regions = {get_region(b) for b in buckets}
 
         # session managers by region
         region_sessions = {}
@@ -1873,7 +1856,7 @@ class EncryptionRequiredPolicy(BucketActionBase):
         return {'Name': b['Name'], 'State': 'PolicyAttached'}
 
 
-class BucketScanLog(object):
+class BucketScanLog:
     """Offload remediated key ids to a disk file in batches
 
     A bucket keyspace is effectively infinite, we need to store partial
@@ -2408,7 +2391,7 @@ class LogTarget(Filter):
     def get_cloud_trail_locations(self, buckets):
         session = local_session(self.manager.session_factory)
         client = session.client('cloudtrail')
-        names = set([b['Name'] for b in buckets])
+        names = {b['Name'] for b in buckets}
         for t in client.describe_trails().get('trailList', ()):
             if t.get('S3BucketName') in names:
                 yield (t['S3BucketName'], t.get('S3KeyPrefix', ''))
@@ -3124,7 +3107,7 @@ class Lifecycle(BucketActionBase):
                 raise e
 
 
-class KMSKeyResolverMixin(object):
+class KMSKeyResolverMixin:
     """Builds a dictionary of region specific ARNs"""
 
     def __init__(self, data, manager=None):
@@ -3195,6 +3178,7 @@ class BucketEncryption(KMSKeyResolverMixin, Filter):
                          key={'type': 'string'})
 
     permissions = ('s3:GetEncryptionConfiguration', 'kms:DescribeKey')
+    annotation_key = 'c7n:bucket-encryption'
 
     def process(self, buckets, event=None):
         self.resolve_keys(buckets)
@@ -3212,16 +3196,22 @@ class BucketEncryption(KMSKeyResolverMixin, Filter):
         return results
 
     def process_bucket(self, b):
+
         client = bucket_client(local_session(self.manager.session_factory), b)
         rules = []
-        try:
-            be = client.get_bucket_encryption(Bucket=b['Name'])
-            b['c7n:bucket-encryption'] = be
-            rules = be.get('ServerSideEncryptionConfiguration', []).get('Rules', [])
-        except ClientError as e:
-            if e.response['Error']['Code'] != 'ServerSideEncryptionConfigurationNotFoundError':
-                raise
+        if self.annotation_key not in b:
+            try:
+                be = client.get_bucket_encryption(Bucket=b['Name'])
+                be.pop('ResponseMetadata', None)
+            except ClientError as e:
+                if e.response['Error']['Code'] != 'ServerSideEncryptionConfigurationNotFoundError':
+                    raise
+                be = {}
+            b[self.annotation_key] = be
+        else:
+            be = [self.annotation_key]
 
+        rules = be.get('ServerSideEncryptionConfiguration', {}).get('Rules', [])
         # default `state` to True as previous impl assumed state == True
         # to preserve backwards compatibility
         if self.data.get('state', True):

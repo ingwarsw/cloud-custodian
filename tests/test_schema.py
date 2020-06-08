@@ -11,10 +11,7 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-from __future__ import absolute_import, division, print_function, unicode_literals
-
 import mock
-import sys
 from jsonschema.exceptions import best_match
 
 from c7n.exceptions import PolicyValidationError
@@ -112,7 +109,7 @@ class StructureParserTest(BaseTest):
         self.assertEqual(
             p.get_resource_types({'policies': [
                 {'resource': 'ec2'}, {'resource': 'gcp.instance'}]}),
-            set(('aws.ec2', 'gcp.instance')))
+            {'aws.ec2', 'gcp.instance'})
 
 
 class SchemaTest(BaseTest):
@@ -197,10 +194,6 @@ class SchemaTest(BaseTest):
         errors = list(validator.iter_errors(data))
         self.assertEqual(len(errors), 1)
         error = specific_error(errors[0])
-        # the repr unicode situation on py2.7 makes this harder to do
-        # an exact match
-        if sys.version_info.major == 2:
-            return self.assertIn('StorageType', str(error))
         self.assertIn(
             "[{'StorageType': 'StandardStorage'}] is not of type 'object'",
             str(error))
@@ -226,24 +219,18 @@ class SchemaTest(BaseTest):
     def test_semantic_error_policy_scope(self):
         data = {
             'policies': [
-                {'actions': [{'key': 'TagPolicyCompliance',
-                              'type': 'tag',
-                              'value': 'This resource should have tags following policy'}],
-                 'description': 'Identify resources which lack our accounting tags',
-                 'filters': [{'tag:Environment': 'absent'},
-                             {'tag:Service': 'absent'},
-                             {'or': [{'tag:Owner': 'absent'},
-                                     {'tag:ResponsibleParty': 'absent'},
-                                     {'tag:Contact': 'absent'},
-                                     {'tag:Creator': 'absent'}]}],
-                 'name': 'tagging-compliance-waf',
+                {'actions': [{'key': 'AES3000',
+                              'type': 'encryption',
+                              'value': 'This resource should have AES3000 encryption'}],
+                 'description': 'Identify resources which lack our outrageous cipher',
+                 'name': 'bogus-policy',
                  'resource': 'aws.waf'}]}
         load_resources(('aws.waf',))
         validator = self.policy_loader.validator.gen_schema(('aws.waf',))
         errors = list(validator.iter_errors(data))
         self.assertEqual(len(errors), 1)
         error = policy_error_scope(specific_error(errors[0]), data)
-        self.assertTrue("policy:tagging-compliance-waf" in error.message)
+        self.assertTrue("policy:bogus-policy" in error.message)
 
     def test_semantic_error(self):
         data = {
@@ -544,10 +531,10 @@ class SchemaTest(BaseTest):
 
     def test_element_doc(self):
 
-        class A(object):
+        class A:
             pass
 
-        class B(object):
+        class B:
             """Hello World
 
             xyz

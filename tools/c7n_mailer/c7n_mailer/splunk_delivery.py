@@ -14,7 +14,7 @@
 
 import json
 from time import sleep
-from six.moves.urllib.parse import urlparse
+from urllib.parse import urlparse
 from random import uniform
 import requests
 from jsonpointer import resolve_pointer, JsonPointerException
@@ -23,7 +23,7 @@ from copy import deepcopy
 from .utils import get_aws_username_from_event
 
 
-class SplunkHecDelivery(object):
+class SplunkHecDelivery:
     """
     Delivery class to send c7n message from SQS to Splunk HTTP Event Collector
     """

@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "c7n_gcp"
-version = "0.3.8"
+version = "0.4.2"
 description = "Cloud Custodian - Google Cloud Provider"
 readme = "readme.md"
 homepage = "https://cloudcustodian.io"
@@ -23,7 +23,7 @@ ratelimiter = "^1.2.0"
 google-cloud-monitoring = "^0.34.0"
 
 [tool.poetry.dev-dependencies]
-pytest = "^5.3.5"
+pytest = "~5.3.5"
 c7n = {path = "../..", develop = true}
 
 [build-system]

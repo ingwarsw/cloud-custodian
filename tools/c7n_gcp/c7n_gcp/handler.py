@@ -21,7 +21,6 @@ from c7n.config import Config
 from c7n.policy import PolicyCollection
 from c7n.resources import load_resources
 from c7n.structure import StructureParser
-
 # Load resource plugins
 from c7n_gcp.entry import initialize_gcp
 
@@ -61,6 +60,7 @@ def run(event, context=None):
     if policies:
         for p in policies:
             log.info("running policy %s", p.name)
+            p.validate()
             p.push(event, context)
     return True
 

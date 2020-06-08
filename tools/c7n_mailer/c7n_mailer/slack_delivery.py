@@ -14,13 +14,12 @@
 import time
 
 import requests
-import six
 from c7n_mailer.ldap_lookup import Redis
 from c7n_mailer.utils import get_rendered_jinja
 from c7n_mailer.utils_email import is_email
 
 
-class SlackDelivery(object):
+class SlackDelivery:
 
     def __init__(self, config, logger, email_handler):
         self.caching = self.cache_factory(config, config.get('cache_engine', None))
@@ -47,7 +46,7 @@ class SlackDelivery(object):
             if target == 'slack://owners':
                 to_addrs_to_resources_map = \
                     self.email_handler.get_email_to_addrs_to_resources_map(sqs_message)
-                for to_addrs, resources in six.iteritems(to_addrs_to_resources_map):
+                for to_addrs, resources in to_addrs_to_resources_map.items():
 
                     resolved_addrs = self.retrieve_user_im(list(to_addrs))
 

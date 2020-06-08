@@ -11,8 +11,6 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-from __future__ import absolute_import, division, print_function, unicode_literals
-
 
 from c7n.actions import Action
 from c7n.manager import resources
@@ -31,6 +29,7 @@ class StepFunction(QueryResourceManager):
         enum_spec = ('list_state_machines', 'stateMachines', None)
         arn = id = 'stateMachineArn'
         arn_type = 'stateMachine'
+        cfn_type = 'AWS::StepFunctions::StateMachine'
         name = 'name'
         date = 'creationDate'
         detail_spec = (

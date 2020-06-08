@@ -16,8 +16,6 @@ Cloud Custodian Lambda Provisioning Support
 
 docs/lambda.rst
 """
-from __future__ import absolute_import, division, print_function, unicode_literals
-
 import abc
 import base64
 import hashlib
@@ -49,9 +47,10 @@ from c7n.utils import parse_s3, local_session, get_retry, merge_dict
 log = logging.getLogger('custodian.serverless')
 
 LambdaRetry = get_retry(('InsufficientPermissionsException',), max_attempts=2)
+RuleRetry = get_retry(('ResourceNotFoundException',), max_attempts=2)
 
 
-class PythonPackageArchive(object):
+class PythonPackageArchive:
     """Creates a zip file for python lambda functions.
 
     :param tuple modules: the Python modules to add to the archive
@@ -359,7 +358,7 @@ def custodian_archive(packages=None):
     return PythonPackageArchive(sorted(modules))
 
 
-class LambdaManager(object):
+class LambdaManager:
     """ Provides CRUD operations around lambda functions
     """
 
@@ -713,10 +712,10 @@ class LambdaFunction(AbstractLambdaFunction):
 
     def __init__(self, func_data, archive):
         self.func_data = func_data
-        required = set((
+        required = {
             'name', 'handler', 'memory_size',
             'timeout', 'role', 'runtime',
-            'description'))
+            'description'}
         missing = required.difference(func_data)
         if missing:
             raise ValueError("Missing required keys %s" % " ".join(missing))
@@ -887,7 +886,8 @@ class PolicyLambda(AbstractLambdaFunction):
 
     def get_events(self, session_factory):
         events = []
-        if self.policy.data['mode']['type'] == 'config-rule':
+        if self.policy.data['mode']['type'] in (
+                'config-rule', 'config-poll-rule'):
             events.append(
                 ConfigRule(self.policy.data['mode'], session_factory))
         elif self.policy.data['mode']['type'] == 'hub-action':
@@ -929,7 +929,7 @@ def zinfo(fname):
     return info
 
 
-class CloudWatchEventSource(object):
+class CloudWatchEventSource:
     """Subscribe a lambda to cloud watch events.
 
     Cloud watch events supports a number of different event
@@ -1115,7 +1115,7 @@ class CloudWatchEventSource(object):
 
         # Add Targets
         found = False
-        response = self.client.list_targets_by_rule(Rule=func.name)
+        response = RuleRetry(self.client.list_targets_by_rule, Rule=func.name)
         # CloudWatchE seems to be quite picky about function arns (no aliases/versions)
         func_arn = func.arn
 
@@ -1157,9 +1157,10 @@ class CloudWatchEventSource(object):
             try:
                 targets = self.client.list_targets_by_rule(
                     Rule=func.name)['Targets']
-                self.client.remove_targets(
-                    Rule=func.name,
-                    Ids=[t['Id'] for t in targets])
+                if targets:
+                    self.client.remove_targets(
+                        Rule=func.name,
+                        Ids=[t['Id'] for t in targets])
             except ClientError as e:
                 log.warning(
                     "Could not remove targets for rule %s error: %s",
@@ -1167,7 +1168,7 @@ class CloudWatchEventSource(object):
             self.client.delete_rule(Name=func.name)
 
 
-class SecurityHubAction(object):
+class SecurityHubAction:
 
     def __init__(self, policy, session_factory):
         self.policy = policy
@@ -1239,7 +1240,7 @@ class SecurityHubAction(object):
         client.delete_action_target(ActionTargetArn=self._get_arn())
 
 
-class BucketLambdaNotification(object):
+class BucketLambdaNotification:
     """ Subscribe a lambda to bucket notifications directly. """
 
     def __init__(self, data, session_factory, bucket):
@@ -1296,7 +1297,7 @@ class BucketLambdaNotification(object):
             params['SourceAccount'] = self.data['account_s3']
             params['SourceArn'] = 'arn:aws:s3:::*'
         else:
-            params['SourceArn'] = 'arn:aws:s3:::%' % self.bucket['Name']
+            params['SourceArn'] = 'arn:aws:s3:::%s' % self.bucket['Name']
         try:
             lambda_client.add_permission(**params)
         except lambda_client.exceptions.ResourceConflictException:
@@ -1329,7 +1330,7 @@ class BucketLambdaNotification(object):
             NotificationConfiguration=notifies)
 
 
-class CloudWatchLogSubscription(object):
+class CloudWatchLogSubscription:
     """ Subscribe a lambda to a log group[s]
     """
 
@@ -1387,7 +1388,7 @@ class CloudWatchLogSubscription(object):
                 pass
 
 
-class SQSSubscription(object):
+class SQSSubscription:
     """ Subscribe a lambda to one or more SQS queues.
     """
 
@@ -1445,7 +1446,7 @@ class SQSSubscription(object):
                 UUID=event_mappings[queue_arn]['UUID'])
 
 
-class SNSSubscription(object):
+class SNSSubscription:
     """ Subscribe a lambda to one or more SNS topics.
     """
 
@@ -1571,7 +1572,7 @@ class BucketSNSNotification(SNSSubscription):
         return topic_arns
 
 
-class ConfigRule(object):
+class ConfigRule:
     """Use a lambda as a custom config rule.
 
     """
@@ -1605,8 +1606,11 @@ class ConfigRule(object):
 
         if isinstance(func, PolicyLambda):
             manager = func.policy.load_resource_manager()
-            if hasattr(manager.get_model(), 'config_type'):
-                config_type = manager.get_model().config_type
+            resource_model = manager.get_model()
+            if resource_model.config_type:
+                config_type = resource_model.config_type
+            elif resource_model.cfn_type and 'schedule' in self.data:
+                config_type = resource_model.cfn_type
             else:
                 raise Exception("You may have attempted to deploy a config "
                                 "based lambda function with an unsupported config type. "
@@ -1618,6 +1622,12 @@ class ConfigRule(object):
         else:
             params['Scope']['ComplianceResourceTypes'] = self.data.get(
                 'resource-types', ())
+        if self.data.get('schedule'):
+            params['Source']['SourceDetails'] = [{
+                'EventSource': 'aws.config',
+                'MessageType': 'ScheduledNotification'
+            }]
+            params['MaximumExecutionFrequency'] = self.data['schedule']
         return params
 
     def get(self, rule_name):
@@ -1637,6 +1647,9 @@ class ConfigRule(object):
         if rule['Scope'] != params['Scope']:
             return True
         if rule['Source'] != params['Source']:
+            return True
+        if ('MaximumExecutionFrequency' in params and
+                rule['MaximumExecutionFrequency'] != params['MaximumExecutionFrequency']):
             return True
         if rule.get('Description', '') != rule.get('Description', ''):
             return True

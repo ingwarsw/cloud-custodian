@@ -13,8 +13,6 @@
 # limitations under the License.
 """Salactus, eater of s3 buckets.
 """
-from __future__ import print_function
-
 from collections import Counter
 import csv
 from datetime import datetime
@@ -281,7 +279,7 @@ def format_accounts_csv(accounts, fh):
                    'size', 'bucket_count']
 
     totals = Counter()
-    skip = set(('name', 'percent_scanned'))
+    skip = {'name', 'percent_scanned'}
     for a in accounts:
         for n in field_names:
             if n in skip:
@@ -410,7 +408,7 @@ def format_csv(buckets, fh, keys=()):
         field_names.insert(0, k)
 
     totals = Counter()
-    skip = set(('account', 'name', 'region', 'percent', 'created', 'inventory'))
+    skip = {'account', 'name', 'region', 'percent', 'created', 'inventory'}
     skip.update(keys)
 
     for b in buckets:

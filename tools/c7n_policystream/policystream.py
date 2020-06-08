@@ -21,7 +21,7 @@ from datetime import datetime, timedelta
 from dateutil.tz import tzoffset, tzutc
 from dateutil.parser import parse
 from fnmatch import fnmatch
-from functools import partial
+from functools import partial, reduce
 import jmespath
 import json
 import logging
@@ -30,7 +30,6 @@ import operator
 import os
 import pygit2
 import requests
-import six
 import tempfile
 import yaml
 
@@ -54,7 +53,7 @@ log = logging.getLogger('c7n.policystream')
 EMPTY_TREE = '4b825dc642cb6eb9a060e54bf8d69288fbee4904'
 
 
-class TempDir(object):
+class TempDir:
 
     def __init__(self):
         self.path = None
@@ -69,7 +68,7 @@ class TempDir(object):
         shutil.rmtree(self.path)
 
 
-class ChangeType(object):
+class ChangeType:
 
     ADD = 1
     REMOVE = 2
@@ -105,7 +104,7 @@ GIT_DELTA = {
 GIT_DELTA_INVERT = {v: k for k, v in GIT_DELTA.items()}
 
 
-class PolicyChange(object):
+class PolicyChange:
     """References a policy change within a given commit.
     """
 
@@ -158,7 +157,7 @@ class PolicyChange(object):
         return d
 
 
-class CollectionDelta(object):
+class CollectionDelta:
     """Iterator over changes between two policy collections.
 
     With a given by url associated to a give commit.
@@ -260,7 +259,7 @@ def policy_path_matcher(path):
         return True
 
 
-class PolicyRepo(object):
+class PolicyRepo:
     """Models a git repository containing policy files.
     """
     def __init__(self, repo_uri, repo, matcher=None):
@@ -475,7 +474,7 @@ def parse_arn(arn):
     return result
 
 
-class Transport(object):
+class Transport:
 
     BUF_SIZE = 1
 
@@ -577,7 +576,7 @@ class SQLTransport(IndexedTransport):
             'select max(commit_date) from policy_changes').fetchone()[0]
         if not value:
             return None
-        if isinstance(value, six.string_types):
+        if isinstance(value, str):
             last_seen = parse(value)
             last_seen = last_seen.replace(tzinfo=tzutc())
         return last_seen
@@ -923,7 +922,7 @@ def stream(repo_uri, stream_uri, verbose, assume, sort, before=None, after=None)
     if after:
         after = parse(after)
     if sort:
-        sort = six.moves.reduce(operator.or_, [SORT_TYPE[s] for s in sort])
+        sort = reduce(operator.or_, [SORT_TYPE[s] for s in sort])
 
     with contextlib.closing(TempDir().open()) as temp_dir:
         if repo_uri is None:

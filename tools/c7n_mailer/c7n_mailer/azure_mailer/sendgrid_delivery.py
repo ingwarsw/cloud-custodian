@@ -14,7 +14,6 @@
 
 
 import sendgrid
-import six
 from python_http_client import exceptions
 from sendgrid.helpers.mail import Content, Email, Header, Mail, To
 
@@ -22,7 +21,7 @@ from c7n_mailer.utils import decrypt
 from c7n_mailer.utils_email import get_mimetext_message, is_email
 
 
-class SendGridDelivery(object):
+class SendGridDelivery:
 
     def __init__(self, config, session, logger):
         self.config = config
@@ -36,7 +35,7 @@ class SendGridDelivery(object):
         to_addrs_to_resources_map = self.get_email_to_addrs_to_resources_map(queue_message)
 
         to_addrs_to_content_map = {}
-        for to_addrs, resources in six.iteritems(to_addrs_to_resources_map):
+        for to_addrs, resources in to_addrs_to_resources_map.items():
             to_addrs_to_content_map[to_addrs] = get_mimetext_message(
                 self.config,
                 self.logger,
@@ -86,7 +85,7 @@ class SendGridDelivery(object):
             queue_message['action'].get('template', 'default'),
             to_addrs_to_email_messages_map))
 
-        for email_to_addrs, message in six.iteritems(to_addrs_to_email_messages_map):
+        for email_to_addrs, message in to_addrs_to_email_messages_map.items():
             for to_address in email_to_addrs:
                 try:
                     mail = SendGridDelivery._sendgrid_mail_from_email_message(message, to_address)
