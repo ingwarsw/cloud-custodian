@@ -208,7 +208,10 @@ class MetricsFilter(Filter):
         metrics_data = self.client.execute_command('list', params)
         # print("result {}".format(metrics_data))
 
-        if not metrics_data or not len(metrics_data['timeSeries']) or not len(metrics_data['timeSeries'][0]['points']):
+        if not metrics_data or \
+           'timeSeries' not in metrics_data or \
+           not len(metrics_data['timeSeries']) or \
+           not len(metrics_data['timeSeries'][0]['points']):
             value = None
         elif len(metrics_data['timeSeries']) > 1 or len(metrics_data['timeSeries'][0]['points']) > 1:
             raise ValueError("Too much series or points {}".format(metrics_data))
@@ -222,8 +225,8 @@ class MetricsFilter(Filter):
         return value
 
     def get_filter(self, resource):
-        filter = 'resource.labels.instance_id="{instance_id}" ' \
-                 'resource.labels.project_id="{project_id}" ' \
+        filter = 'resource.label.instance_id="{instance_id}" ' \
+                 'resource.label.project_id="{project_id}" ' \
                  'metric.type="{metric}" ' \
                  '{filter}'.format(
             instance_id=resource['id'],
