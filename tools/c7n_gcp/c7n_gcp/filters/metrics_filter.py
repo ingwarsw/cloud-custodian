@@ -199,7 +199,7 @@ class MetricsFilter(Filter):
                   'interval_startTime': start_time.isoformat('T') + 'Z',
                   'interval_endTime': end_time.isoformat('T') + 'Z',
                   'aggregation_crossSeriesReducer': 'REDUCE_{}'.format(self.aggregation.upper()),
-                  'aggregation_alignmentPeriod': '86400000s', # 1000 days
+                  'aggregation_alignmentPeriod': '8640000s', # 100 days
                   'aggregation_perSeriesAligner': 'ALIGN_{}'.format(self.aligner.upper()),
                   'filter': self.get_filter(resource),
         }
