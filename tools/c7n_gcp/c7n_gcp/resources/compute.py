@@ -151,6 +151,50 @@ class DetachDisks(MethodAction):
             self.invoke_api(client, op_name, params)
 
 
+@Instance.action_registry.register('create-machine-image')
+class CreateMachineImage(MethodAction):
+    """
+    `Creates Machine Image <https://cloud.google.com/compute/docs/reference/rest/beta/machineImages/insert>`_
+    from instance. The action does not specify any parameters.
+    
+    The `name_format` specifies name of snapshot in python `format string <https://pyformat.info/>`
+
+    Inside format string there are defined variables:
+      - `now`: current time
+      - `instance`: whole instance resource
+
+    Default name format is `{instance[name]}`
+
+    :Example:
+
+    .. code-block:: yaml
+
+        policies:
+          - name: gcp-create-machine-image
+            resource: gcp.instance
+            filters:
+              - type: value
+                key: name
+                value: instance-create-to-make-image
+            actions:
+              - type: create-machine-image
+                name_format: "{instance[name]:.50}-{now:%Y-%m-%d}"
+
+    """
+    schema = type_schema('create-machine-image', name_format={'type': 'string'})
+    method_spec = {'op': 'insert'}
+
+    def get_resource_params(self, model, resource):
+        path_param_re = re.compile('.*?/projects/(.*?)/zones/(.*?)/instances/(.*)')
+        project, _, _ = path_param_re.match(resource['selfLink']).groups()
+        name_format = self.data.get('name_format', '{instance[name]}')
+        name = name_format.format(instance=resource, now=datetime.now())
+
+        return {'project': project, 'sourceInstance': resource['selfLink'], 'body': {'name': name}}
+
+    def get_client(self, session, model):
+        return session.client(model.service, "beta", "machineImages")
+
 @resources.register('image')
 class Image(QueryResourceManager):
 
