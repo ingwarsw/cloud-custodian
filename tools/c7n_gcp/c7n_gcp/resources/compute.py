@@ -147,9 +147,9 @@ class DetachDisks(MethodAction):
 @Instance.action_registry.register('create-machine-image')
 class CreateMachineImage(MethodAction):
     """
-    `Creates Machine Image <https://cloud.google.com/compute/docs/reference/rest/beta/machineImages/insert>`_
-    from instance. The action does not specify any parameters.
-    
+    `Creates <https://cloud.google.com/compute/docs/reference/rest/beta/machineImages/insert>`_
+     Machine Image from instance. The action does not specify any parameters.
+
     The `name_format` specifies name of snapshot in python `format string <https://pyformat.info/>`
 
     Inside format string there are defined variables:
@@ -187,6 +187,7 @@ class CreateMachineImage(MethodAction):
 
     def get_client(self, session, model):
         return session.client(model.service, "beta", "machineImages")
+
 
 @resources.register('image')
 class Image(QueryResourceManager):

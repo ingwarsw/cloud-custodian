@@ -170,6 +170,7 @@ class InstanceTest(BaseTest):
         resources = p.run()
         self.assertEqual(len(resources), 1)
 
+
 class DiskTest(BaseTest):
 
     def test_disk_query(self):
