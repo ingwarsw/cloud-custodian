@@ -160,7 +160,7 @@ class InstanceTest(BaseTest):
 
     def test_create_machine_instance_from_instance(self):
         project_id = 'custodian-tests'
-        factory = self.record_flight_data('instance-create-machine-instance', project_id=project_id)
+        factory = self.replay_flight_data('instance-create-machine-instance', project_id=project_id)
         p = self.load_policy(
             {'name': 'icmachineinstance',
              'resource': 'gcp.instance',
