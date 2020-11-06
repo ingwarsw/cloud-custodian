@@ -148,9 +148,9 @@ class DetachDisks(MethodAction):
 class CreateMachineImage(MethodAction):
     """
     `Creates <https://cloud.google.com/compute/docs/reference/rest/beta/machineImages/insert>`_
-     Machine Image from instance. The action does not specify any parameters.
+     Machine Image from instance.
 
-    The `name_format` specifies name of snapshot in python `format string <https://pyformat.info/>`
+    The `name_format` specifies name of image in python `format string <https://pyformat.info/>`
 
     Inside format string there are defined variables:
       - `now`: current time
