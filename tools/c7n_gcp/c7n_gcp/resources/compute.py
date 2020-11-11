@@ -176,6 +176,7 @@ class CreateMachineImage(MethodAction):
     """
     schema = type_schema('create-machine-image', name_format={'type': 'string'})
     method_spec = {'op': 'insert'}
+    permissions = ('compute.machineImages.create',)
 
     def get_resource_params(self, model, resource):
         path_param_re = re.compile('.*?/projects/(.*?)/zones/(.*?)/instances/(.*)')
