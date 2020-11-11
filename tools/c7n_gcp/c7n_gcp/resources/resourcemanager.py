@@ -1,9 +1,11 @@
 # Copyright 2018 Capital One Services, LLC
 # Copyright The Cloud Custodian Authors.
 # SPDX-License-Identifier: Apache-2.0
-from c7n_gcp.actions import SetIamPolicy
+from c7n_gcp.actions import SetIamPolicy, MethodAction
 from c7n_gcp.provider import resources
 from c7n_gcp.query import QueryResourceManager, TypeInfo
+
+from c7n.utils import type_schema, local_session
 
 
 @resources.register('organization')
@@ -52,6 +54,15 @@ class Folder(QueryResourceManager):
         asset_type = "cloudresourcemanager.googleapis.com/Folder"
         perm_service = 'resourcemanager'
 
+    def get_resources(self, resource_ids):
+        client = self.get_client()
+        results = []
+        for rid in resource_ids:
+            if not rid.startswith('folders/'):
+                rid = 'folders/%s' % rid
+            results.append(client.execute_query('get', {'name': rid}))
+        return results
+
     def get_resource_query(self):
         if 'query' in self.data:
             for child in self.data.get('query'):
@@ -93,6 +104,25 @@ class Project(QueryResourceManager):
                     return {'filter': child['filter']}
 
 
+@Project.action_registry.register('delete')
+class ProjectDelete(MethodAction):
+    """Delete a GCP Project
+
+    Note this will also schedule deletion of assets contained within
+    the project. The project will not be accessible, and assets
+    contained within the project may continue to accrue costs within
+    a 30 day period. For details see
+    https://cloud.google.com/resource-manager/docs/creating-managing-projects#shutting_down_projects
+
+    """
+    method_spec = {'op': 'delete'}
+    attr_filter = ('lifecycleState', ('ACTIVE',))
+    schema = type_schema('delete')
+
+    def get_resource_params(self, model, resource):
+        return {'projectId': resource['projectId']}
+
+
 @Project.action_registry.register('set-iam-policy')
 class ProjectSetIamPolicy(SetIamPolicy):
     """
@@ -102,3 +132,42 @@ class ProjectSetIamPolicy(SetIamPolicy):
         verb_arguments = SetIamPolicy._verb_arguments(self, resource)
         verb_arguments['body'] = {}
         return verb_arguments
+
+
+class HierarchyAction(MethodAction):
+
+    def load_hierarchy(self, resources):
+        parents = {}
+        folder_ids = set()
+        session = local_session(self.manager.session_factory)
+        for r in resources:
+            client = self.get_client(session, self.manager.resource_type)
+            ancestors = client.execute_command(
+                'getAncestry', {'projectId': r['projectId']}).get('ancestor')
+            parents[r['projectId']] = ancestors
+            for a in ancestors[1:-1]:
+                if a['resourceId']['type'] != 'folder':
+                    continue
+                folder_ids.add(a['resourceId']['id'])
+        self.parents = parents
+        self.folder_ids = folder_ids
+
+    def load_folders(self):
+        folder_manager = self.manager.get_resource_manager('gcp.folder')
+        self.folders = {
+            f['name'].split('/', 1)[-1]: f for f in
+            folder_manager.get_resources(list(self.folder_ids))}
+
+    def load_metadata(self):
+        raise NotImplementedError()
+
+    def diff(self, resources):
+        raise NotImplementedError()
+
+    def process(self, resources):
+        self.load_hierarchy(resources)
+        self.load_metadata()
+        op_set = self.diff(resources)
+        client = self.manager.get_client()
+        for op in op_set:
+            self.invoke_op(client, *op)
