@@ -983,7 +983,6 @@
     "compute.instances.getSerialPortOutput",
     "compute.instances.getShieldedInstanceIdentity",
     "compute.instances.getShieldedVmIdentity",
-    "compute.instances.insert",
     "compute.instances.list",
     "compute.instances.listReferrers",
     "compute.instances.osAdminLogin",
