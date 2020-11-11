@@ -280,14 +280,14 @@ class ConfigS3(query.ConfigSource):
         for rid, r in item_value['rules'].items():
             rule = {
                 'ID': rid,
-                'Status': r['status'],
-                'Prefix': r['prefix'],
+                'Status': r.get('status', ''),
+                'Prefix': r.get('prefix', ''),
                 'Destination': {
                     'Bucket': r['destinationConfig']['bucketARN']}
             }
             if 'Account' in r['destinationConfig']:
                 rule['Destination']['Account'] = r['destinationConfig']['Account']
-            if r['destinationConfig']['storageClass']:
+            if r['destinationConfig'].get('storageClass'):
                 rule['Destination']['StorageClass'] = r['destinationConfig']['storageClass']
             d['Rules'].append(rule)
         resource['Replication'] = {'ReplicationConfiguration': d}
