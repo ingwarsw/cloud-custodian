@@ -1,10 +1,13 @@
-# Copyright 2018 Capital One Services, LLC
 # Copyright The Cloud Custodian Authors.
 # SPDX-License-Identifier: Apache-2.0
+
+import itertools
+
 from c7n_gcp.actions import SetIamPolicy, MethodAction
 from c7n_gcp.provider import resources
 from c7n_gcp.query import QueryResourceManager, TypeInfo
 
+from c7n.resolver import ValuesFrom
 from c7n.utils import type_schema, local_session
 
 
@@ -138,19 +141,17 @@ class HierarchyAction(MethodAction):
 
     def load_hierarchy(self, resources):
         parents = {}
-        folder_ids = set()
         session = local_session(self.manager.session_factory)
+
         for r in resources:
             client = self.get_client(session, self.manager.resource_type)
             ancestors = client.execute_command(
                 'getAncestry', {'projectId': r['projectId']}).get('ancestor')
-            parents[r['projectId']] = ancestors
-            for a in ancestors[1:-1]:
-                if a['resourceId']['type'] != 'folder':
-                    continue
-                folder_ids.add(a['resourceId']['id'])
+            parents[r['projectId']] = [
+                a['resourceId']['id'] for a in ancestors
+                if a['resourceId']['type'] == 'folder']
         self.parents = parents
-        self.folder_ids = folder_ids
+        self.folder_ids = set(itertools.chain(*self.parents.values()))
 
     def load_folders(self):
         folder_manager = self.manager.get_resource_manager('gcp.folder')
@@ -165,9 +166,126 @@ class HierarchyAction(MethodAction):
         raise NotImplementedError()
 
     def process(self, resources):
+        if self.attr_filter:
+            resources = self.filter_resources(resources)
+
         self.load_hierarchy(resources)
         self.load_metadata()
         op_set = self.diff(resources)
         client = self.manager.get_client()
         for op in op_set:
-            self.invoke_op(client, *op)
+            self.invoke_api(client, *op)
+
+
+@Project.action_registry.register('propagate-labels')
+class ProjectPropagateLabels(HierarchyAction):
+    """Propagate labels from the organization hierarchy to a project.
+
+    folder-labels should resolve to a json data mapping of folder path
+    to labels that should be applied to contained projects.
+
+    as a worked example assume the following resource hierarchy
+
+    ::
+
+      - /dev
+           /network
+              /project-a
+           /ml
+              /project-b
+
+    Given a folder-labels json with contents like
+
+    .. code-block:: json
+
+      {"dev": {"env": "dev", "owner": "dev"},
+       "dev/network": {"owner": "network"},
+       "dev/ml": {"owner": "ml"}
+
+    Running the following policy
+
+    .. code-block:: yaml
+
+      policies:
+       - name: tag-projects
+         resource: gcp.project
+         # use a server side filter to only look at projects
+         # under the /dev folder the id for the dev folder needs
+         # to be manually resolved outside of the policy.
+         query:
+           - filter: "parent.id:389734459211 parent.type:folder"
+         filters:
+           - "tag:owner": absent
+         actions:
+           - type: propagate-labels
+             folder-labels:
+                url: file://folder-labels.json
+
+    Will result in project-a being tagged with owner: network and env: dev
+    and project-b being tagged with owner: ml and env: dev
+
+    """
+    schema = type_schema(
+        'propagate-labels',
+        required=('folder-labels',),
+        **{
+            'folder-labels': {
+                '$ref': '#/definitions/filters_common/value_from'}},
+    )
+
+    attr_filter = ('lifecycleState', ('ACTIVE',))
+    permissions = ('resourcemanager.folders.get',
+                   'resourcemanager.projects.update')
+    method_spec = {'op': 'update'}
+
+    def load_metadata(self):
+        """Load hierarchy tags"""
+        self.resolver = ValuesFrom(self.data['folder-labels'], self.manager)
+        self.labels = self.resolver.get_values()
+        self.load_folders()
+        self.resolve_paths()
+
+    def resolve_paths(self):
+        self.folder_paths = {}
+
+        def get_path_segments(fid):
+            p = self.folders[fid]['parent']
+            if p.startswith('folder'):
+                for s in get_path_segments(p.split('/')[-1]):
+                    yield s
+            yield self.folders[fid]['displayName']
+
+        for fid in self.folder_ids:
+            self.folder_paths[fid] = '/'.join(get_path_segments(fid))
+
+    def resolve_labels(self, project_id):
+        hlabels = {}
+        parents = self.parents[project_id]
+        for p in reversed(parents):
+            pkeys = [p, self.folder_paths[p], 'folders/%s' % p]
+            for pk in pkeys:
+                hlabels.update(self.labels.get(pk, {}))
+
+        return hlabels
+
+    def diff(self, resources):
+        model = self.manager.resource_type
+
+        for r in resources:
+            hlabels = self.resolve_labels(r['projectId'])
+            if not hlabels:
+                continue
+
+            delta = False
+            rlabels = r.get('labels', {})
+            for k, v in hlabels.items():
+                if k not in rlabels or rlabels[k] != v:
+                    delta = True
+            if not delta:
+                continue
+
+            rlabels = dict(rlabels)
+            rlabels.update(hlabels)
+
+            if delta:
+                yield ('update', model.get_label_params(r, rlabels))
