@@ -1,3 +1,5 @@
+# Copyright The Cloud Custodian Authors.
+# SPDX-License-Identifier: Apache-2.0
 
 import json
 import subprocess
@@ -24,7 +26,7 @@ name = "WatchFolk"
 """
 
 
-class GitRepo(object):
+class GitRepo:
 
     def __init__(self, repo_path, git_config=None):
         self.repo_path = repo_path
